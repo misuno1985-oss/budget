@@ -2,20 +2,22 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { capital, month, prepaidLeft, tax } from './calc'
 import { fetchComments, inboxNumber, loadData, loadSettings, saveData, saveSettings, type Settings } from './github'
 import { cachedRates, fetchRates, type RatesInfo } from './rates'
-import { applyOp, emptyState, ingest, uid, undoOp } from './state'
+import { brandsOf, KAS_LOGO } from './brands'
+import { Background } from './Background'
+import { applyOp, emptyState, ingest, migrate, uid, undoOp } from './state'
 import type { Bank, State } from './types'
 import { CUR_SIGN } from './types'
-import { fmt, MoneyInput, Num, Rows } from './ui'
+import { fmt, Logos, Num, Rows, Txt } from './ui'
 
 const LKEY = 'budget.state'
-const TABS = ['Месяц', 'Капитал', 'Налоги', 'Квартира', 'Операции', 'Настройки'] as const
+const TABS = ['Месяц', 'Капитал', 'Налоги', 'Покер', 'Квартира', 'Операции', 'Настройки'] as const
 type Tab = (typeof TABS)[number]
 const BANK_NAME: Record<Bank, string> = { pko: 'PKO', revolut: 'Revolut' }
 
 function localState(): State {
   try {
     const s = JSON.parse(localStorage.getItem(LKEY) || 'null')
-    if (s?.version === 1) return s
+    if (s?.version === 1 || s?.version === 2) return migrate(s)
   } catch {}
   return emptyState()
 }
@@ -74,8 +76,10 @@ export default function App() {
         sha.current = h
         ready.current = true
         if (s) {
-          skip.current = true
-          setState(s)
+          const m = migrate(s)
+          // Старый формат — сразу сохранить обновлённый.
+          if (m === s) skip.current = true
+          setState(m)
         } else setState(prev => ({ ...prev }))
         setStatus(s ? 'Загружено' : 'Новый файл данных')
         return pullOps()
@@ -138,6 +142,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <Background tab={tab} />
       <header>
         <nav>
           {TABS.map(x => (
@@ -219,7 +224,10 @@ export default function App() {
                 {state.subs.map((x, i) => (
                   <tr key={x.id} className={x.paid ? 'paid' : ''}>
                     <td>
-                      <input className="name" value={x.name} placeholder="Сервис" onChange={e => upd(s => void (s.subs[i].name = e.target.value))} />
+                      <div className="nmcell">
+                        <Logos name={x.name} />
+                        <Txt value={x.name} placeholder="Сервис" onChange={v => upd(s => void (s.subs[i].name = v))} />
+                      </div>
                     </td>
                     <td>
                       <Num width={44} value={x.day} onChange={v => upd(s => void (s.subs[i].day = v))} />
@@ -228,7 +236,7 @@ export default function App() {
                       <Num width={80} value={x.price} onChange={v => upd(s => void (s.subs[i].price = v))} />
                     </td>
                     <td>
-                      <input type="checkbox" checked={x.paid} onChange={e => upd(s => void (s.subs[i].paid = e.target.checked))} />
+                      <input type="checkbox" className="chk" checked={x.paid} onChange={e => upd(s => void (s.subs[i].paid = e.target.checked))} />
                     </td>
                     <td className="del">
                       <button className="x" aria-label="Удалить" onClick={() => confirm(`Удалить «${x.name}»?`) && upd(s => void s.subs.splice(i, 1))}>
@@ -270,7 +278,10 @@ export default function App() {
             <h3>Долги и обязательства</h3>
             <Rows rows={state.liabilities} rates={R} addLabel="+ долг" onChange={r => upd(s => void (s.liabilities = r))} />
             <div className="star">
-              <span>Налог {state.tax.year} (осталось)</span>
+              <span className="nmcell">
+                <img className="kas" src={KAS_LOGO} alt="" />
+                Налог {state.tax.year} (осталось)
+              </span>
               <b>{fmt(c.taxLeft)}</b>
             </div>
             <div className="star">
@@ -303,41 +314,57 @@ export default function App() {
         <div className="grid">
           <div className="card wide">
             <h3>
-              Доходы {state.tax.year}{' '}
-              <Num width={64} value={state.tax.year} onChange={v => upd(s => void (s.tax.year = v))} />
+              <img className="kas" src={KAS_LOGO} alt="" />
+              Доходы <Num width={64} value={state.tax.year} onChange={v => upd(s => void (s.tax.year = v))} /> · Urząd Skarbowy
             </h3>
             <div className="taxcols">
-              {state.tax.columns.map((col, ci) => (
-                <div key={col.id} className="taxcol">
-                  <input className="name strong" value={col.name} onChange={e => upd(s => void (s.tax.columns[ci].name = e.target.value))} />
-                  <label className="muted small">
-                    налог <Num width={48} value={col.rate} onChange={v => upd(s => void (s.tax.columns[ci].rate = v))} /> %
-                  </label>
-                  {col.items.map((it, ii) => (
-                    <div key={it.id} className="taxitem">
-                      <Num value={it.v} onChange={v => upd(s => void (s.tax.columns[ci].items[ii].v = v))} />
-                      <button className="x" aria-label="Удалить" onClick={() => upd(s => void s.tax.columns[ci].items.splice(ii, 1))}>
-                        ×
-                      </button>
+              {state.tax.columns.map((col, ci) => {
+                const brand = brandsOf(col.name)[0]
+                return (
+                  <div
+                    key={col.id}
+                    className={'taxcol' + (brand?.color ? ' branded' : '')}
+                    style={brand?.color ? ({ '--brand': brand.color, '--on-brand': brand.key === 'bmc' ? '#000' : '#fff' } as React.CSSProperties) : undefined}
+                  >
+                    <div className="taxhead">
+                      {brand && <img src={brand.src} alt="" />}
+                      <Txt className="name strong" value={col.name} onChange={v => upd(s => void (s.tax.columns[ci].name = v))} />
                     </div>
-                  ))}
-                  <button className="add" onClick={() => upd(s => void s.tax.columns[ci].items.push({ id: uid(), v: 0 }))}>
-                    + доход
-                  </button>
-                  <div className="sum">
-                    <span>Сумма</span>
-                    <b>{fmt(t.cols[ci].income, 2)}</b>
+                    <div className="taxline muted">
+                      <span>налог</span>
+                      <span>
+                        <Num width={52} value={col.rate} onChange={v => upd(s => void (s.tax.columns[ci].rate = v))} /> %
+                      </span>
+                    </div>
+                    {col.items.map((it, ii) => (
+                      <div key={it.id} className="taxline">
+                        <button className="x" aria-label="Удалить" onClick={() => confirm('Удалить сумму?') && upd(s => void s.tax.columns[ci].items.splice(ii, 1))}>
+                          ×
+                        </button>
+                        <Num value={it.v} onChange={v => upd(s => void (s.tax.columns[ci].items[ii].v = v))} />
+                      </div>
+                    ))}
+                    <button className="add" onClick={() => upd(s => void s.tax.columns[ci].items.push({ id: uid(), v: 0 }))}>
+                      + доход
+                    </button>
+                    <div className="taxline total">
+                      <span>Сумма</span>
+                      <b>{fmt(t.cols[ci].income, 2)}</b>
+                    </div>
+                    <div className="band">
+                      <span>Налог</span>
+                      <b>{fmt(t.cols[ci].due, 2)}</b>
+                    </div>
                   </div>
-                  <div className="star">
-                    <span>Налог</span>
-                    <b>{fmt(t.cols[ci].due, 2)}</b>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
           <div className="card">
-            <h3>Urząd Skarbowy — взносы</h3>
+            <h3>
+              <img className="kas" src={KAS_LOGO} alt="" />
+              Urząd Skarbowy — взносы
+            </h3>
             <table className="rows">
               <tbody>
                 {state.tax.payments.map((p, i) => (
@@ -379,6 +406,52 @@ export default function App() {
               <b className={t.left > 0 ? 'neg' : 'pos'}>{fmt(t.left, 2)}</b>
             </div>
             <p className="muted small">«Осталось» автоматически стоит в долгах капитала.</p>
+          </div>
+        </div>
+      )}
+
+      {tab === 'Покер' && (
+        <div className="grid">
+          <div className="card wide">
+            <h3>♠ Покер · без налога</h3>
+            <table className="rows">
+              <thead>
+                <tr>
+                  <th>Дата</th>
+                  <th>Название</th>
+                  <th className="r">Сумма, zł</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {state.poker.map((p, i) => (
+                  <tr key={p.id}>
+                    <td>
+                      <input type="date" value={p.date} onChange={e => upd(s => void (s.poker[i].date = e.target.value))} />
+                    </td>
+                    <td>
+                      <Txt value={p.name} placeholder="Выигрыш" onChange={v => upd(s => void (s.poker[i].name = v))} />
+                    </td>
+                    <td className="r">
+                      <Num value={p.amount} onChange={v => upd(s => void (s.poker[i].amount = v))} />
+                    </td>
+                    <td className="del">
+                      <button className="x" aria-label="Удалить" onClick={() => confirm('Удалить запись?') && upd(s => void s.poker.splice(i, 1))}>
+                        ×
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <button className="add" onClick={() => upd(s => void s.poker.push({ id: uid(), date: new Date().toISOString().slice(0, 10), name: '', amount: 0 }))}>
+              + строка
+            </button>
+            <div className="sum big">
+              <span>Всего</span>
+              <b>{fmt(state.poker.reduce((a, p) => a + p.amount, 0), 2)} zł</b>
+            </div>
+            <p className="muted small">С покера налог не считается, в налоги эти суммы не попадают.</p>
           </div>
         </div>
       )}
@@ -430,7 +503,7 @@ export default function App() {
                       </td>
                     ))}
                     <td>
-                      <input className="name" value={p.note} onChange={e => upd(s => void (s.rent[i].note = e.target.value))} />
+                      <Txt value={p.note} onChange={v => upd(s => void (s.rent[i].note = v))} />
                     </td>
                     <td className="del">
                       <button className="x" aria-label="Удалить" onClick={() => confirm('Удалить запись?') && upd(s => void s.rent.splice(i, 1))}>
@@ -511,7 +584,7 @@ export default function App() {
 
       {tab === 'Настройки' && <SettingsTab state={state} upd={upd} settings={settings} setSettings={setSettings} inbox={inbox.current} />}
 
-      <footer className="muted small">{status}</footer>
+      <footer className="small">{status}</footer>
     </div>
   )
 }

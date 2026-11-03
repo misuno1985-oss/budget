@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { brandsOf } from './brands'
 import { toPln } from './calc'
 import { uid } from './state'
 import { CURRENCIES, CUR_SIGN, type Money, type Rates, type Row } from './types'
@@ -11,30 +12,88 @@ const parseNum = (s: string) => {
   return Number.isFinite(n) ? n : 0
 }
 
-/** Числовое поле: пока печатаешь, текст свой; запятая и пробелы допустимы. */
-export function Num({ value, onChange, className, width }: { value: number; onChange: (n: number) => void; className?: string; width?: number }) {
-  const [text, setText] = useState(value ? String(value).replace('.', ',') : '')
-  const focused = useRef(false)
+/**
+ * Поле, которое вносит значение только по «Ввод». Ушли без «Ввода» — вписанное отменяется.
+ * Пока не подтверждено, поле подсвечено (класс pending).
+ */
+function Draft({
+  shown,
+  commit,
+  className,
+  width,
+  placeholder,
+}: {
+  shown: string
+  commit: (text: string) => void
+  className: string
+  width?: number
+  placeholder?: string
+}) {
+  const [text, setText] = useState(shown)
+  const editing = useRef(false)
+  const committed = useRef(false)
   useEffect(() => {
-    if (!focused.current) setText(value ? String(value).replace('.', ',') : '')
-  }, [value])
+    if (!editing.current) setText(shown)
+  }, [shown])
+  const pending = text !== shown
   return (
-    <input
-      className={className ?? 'num'}
-      style={width ? { width } : undefined}
-      inputMode="decimal"
-      value={text}
-      placeholder="0"
-      onFocus={() => (focused.current = true)}
-      onBlur={() => {
-        focused.current = false
-        setText(value ? String(value).replace('.', ',') : '')
-      }}
-      onChange={e => {
-        setText(e.target.value)
-        onChange(parseNum(e.target.value))
-      }}
-    />
+    <span className="draft">
+      <input
+        className={className + (pending ? ' pending' : '')}
+        style={width ? { width } : undefined}
+        value={text}
+        placeholder={placeholder}
+        enterKeyHint="enter"
+        title={pending ? 'Нажмите «Ввод», чтобы внести' : undefined}
+        onFocus={() => (editing.current = true)}
+        onBlur={() => {
+          editing.current = false
+          // После «Ввода» оставляем вписанное — значение уже внесено; иначе отменяем.
+          if (!committed.current) setText(shown)
+          committed.current = false
+        }}
+        onKeyDown={e => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            commit(text)
+            committed.current = true
+            ;(e.target as HTMLInputElement).blur()
+          } else if (e.key === 'Escape') {
+            setText(shown)
+            ;(e.target as HTMLInputElement).blur()
+          }
+        }}
+        onChange={e => setText(e.target.value)}
+      />
+      {pending && <span className="enter">↵</span>}
+    </span>
+  )
+}
+
+const numText = (v: number) => (v ? String(v).replace('.', ',') : '')
+
+/** Число: запятая и пробелы допустимы, вносится по «Ввод». */
+export function Num({ value, onChange, className, width }: { value: number; onChange: (n: number) => void; className?: string; width?: number }) {
+  return <Draft shown={numText(value)} commit={t => onChange(parseNum(t))} className={className ?? 'num'} width={width} placeholder="0" />
+}
+
+/** Текст (название строки), вносится по «Ввод». */
+export function Txt({ value, onChange, className, placeholder }: { value: string; onChange: (s: string) => void; className?: string; placeholder?: string }) {
+  return <Draft shown={value} commit={t => onChange(t.trim())} className={className ?? 'name'} placeholder={placeholder} />
+}
+
+/** Логотипы брендов, найденных в названии. */
+export function Logos({ name }: { name: string }) {
+  const list = brandsOf(name)
+  if (!list.length) return null
+  return (
+    <span className="logos">
+      {list.map(b => (
+        <span key={b.key} className="lg">
+          <img src={b.src} alt="" />
+        </span>
+      ))}
+    </span>
   )
 }
 
@@ -120,8 +179,11 @@ export function Rows({
           {rows.map((r, i) => (
             <tr key={r.id}>
               <td>
-                <input className="name" value={r.name} placeholder="Название" onChange={e => set(i, { name: e.target.value })} />
-                {extra?.(r)}
+                <div className="nmcell">
+                  <Logos name={r.name} />
+                  <Txt value={r.name} placeholder="Название" onChange={name => set(i, { name })} />
+                  {extra?.(r)}
+                </div>
               </td>
               {withPlan && (
                 <td className="r">

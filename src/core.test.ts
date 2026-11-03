@@ -144,3 +144,18 @@ describe('уведомления в формате банков', () => {
     expect(s2.incomes[0].amt.v).toBe(200)
   })
 })
+
+describe('обновление старых данных', () => {
+  it('переименовывает бренды и добавляет покер один раз', async () => {
+    const { migrate } = await import('./state')
+    const old: any = { ...sample(), version: 1, poker: undefined }
+    old.subs = [{ id: 's', name: 'Клод', day: 1, price: 1, paid: true }]
+    old.tax.columns[1].name = 'Кофе'
+    const m = migrate(old)
+    expect(m.version).toBe(2)
+    expect(m.subs[0].name).toBe('Claude')
+    expect(m.tax.columns[1].name).toBe('Buy Me a Coffee')
+    expect(m.poker).toEqual([])
+    expect(migrate(m)).toBe(m)
+  })
+})

@@ -1,3 +1,4 @@
+import { RENAMES } from './brands'
 import { toPln } from './calc'
 import { parseNotification, splitComment } from './parse'
 import type { Op, Rates, State } from './types'
@@ -6,7 +7,7 @@ export const uid = () => Math.random().toString(36).slice(2, 10)
 
 export function emptyState(): State {
   return {
-    version: 1,
+    version: 2,
     payday: '',
     incomes: [],
     expenses: [],
@@ -21,7 +22,7 @@ export function emptyState(): State {
       columns: [
         { id: uid(), name: 'Patreon', rate: 12, items: [] },
         { id: uid(), name: 'Зарплата', rate: 6.1, items: [] },
-        { id: uid(), name: 'Кофе', rate: 12, items: [] },
+        { id: uid(), name: 'Buy Me a Coffee', rate: 12, items: [] },
       ],
       payments: [],
     },
@@ -29,7 +30,19 @@ export function emptyState(): State {
     bankLinks: { pko: null, revolut: null },
     ops: [],
     lastCommentId: 0,
+    poker: [],
   }
+}
+
+/** Обновляет данные старых версий. Возвращает тот же объект, если менять нечего. */
+export function migrate(s: any): State {
+  if (s?.version === 2) return s
+  const n = structuredClone(s)
+  const ren = (r: { name: string }) => (r.name = RENAMES[r.name] ?? r.name)
+  ;[n.incomes, n.expenses, n.subs, n.assets, n.liabilities, n.tax?.columns].forEach((l: any[] | undefined) => l?.forEach(ren))
+  n.poker ??= []
+  n.version = 2
+  return n
 }
 
 const linkedRow = (s: State, op: Op) => [...s.incomes, ...s.assets].find(r => r.id === s.bankLinks[op.bank])

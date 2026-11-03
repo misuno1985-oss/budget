@@ -4,3 +4,4 @@ dist
 seed*.json
 tsconfig.tsbuildinfo
 .claude
+mockup

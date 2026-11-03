@@ -59,8 +59,15 @@ export interface Op {
   pln?: number
 }
 
+export interface PokerWin {
+  id: string
+  date: string
+  name: string
+  amount: number
+}
+
 export interface State {
-  version: 1
+  version: 2
   payday: string
   incomes: Row[]
   expenses: Row[]
@@ -77,6 +84,8 @@ export interface State {
   bankLinks: Record<Bank, string | null>
   ops: Op[]
   lastCommentId: number
+  /** Выигрыши в покер — учёт без налога. */
+  poker: PokerWin[]
 }
 
 export type Rates = Record<Cur, number>
