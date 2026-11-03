@@ -52,7 +52,13 @@ export interface Op {
   cur: Cur
   /** +1 пришло, −1 ушло, 0 не распознано */
   dir: 1 | -1 | 0
-  status: 'applied' | 'unknown' | 'ignored'
+  /** matched — совпало с ручной записью, повторно не учтено. */
+  status: 'applied' | 'unknown' | 'ignored' | 'matched'
+  /** Внесено вручную во вкладке «Операции». */
+  manual?: boolean
+  note?: string
+  /** Пара «ручная запись ↔ уведомление банка». */
+  matchedWith?: number
   /** Остаток после операции из текста банка — важнее суммы операции. */
   balance?: number
   /** Сколько злотых изменилось на счёте. */

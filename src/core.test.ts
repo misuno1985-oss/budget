@@ -159,3 +159,54 @@ describe('обновление старых данных', () => {
     expect(migrate(m)).toBe(m)
   })
 })
+
+describe('ручные операции и защита от двойного учёта', () => {
+  const rev = (id: number, at: string, sum: string) => ({ id, created_at: at, body: `revolut: Ja otrzyma od Ciebie ${sum} zł.` })
+  async function setup() {
+    const st = await import('./state')
+    const s = sample()
+    s.bankLinks = { pko: 'a', revolut: 'b' }
+    return { st, s }
+  }
+  it('вручную −12,22, через два дня уведомление — второй раз не списывается', async () => {
+    const { st, s } = await setup()
+    st.addManual(s, 'revolut', -1, 12.22, 'жене', rates, '2026-11-03T19:00:00Z')
+    expect(s.incomes[1].amt.v).toBe(987.78)
+    const s2 = st.ingest(s, [rev(5, '2026-11-05T09:00:00Z', '12,22')], rates)
+    expect(s2.incomes[1].amt.v).toBe(987.78)
+    const auto = s2.ops.find(o => o.id === 5)!
+    expect(auto.status).toBe('matched')
+    expect(s2.ops.find(o => o.manual)!.matchedWith).toBe(5)
+  })
+  it('другая сумма, другой банк или старше 10 дней — считается как обычно', async () => {
+    const { st, s } = await setup()
+    st.addManual(s, 'revolut', -1, 12.22, '', rates, '2026-11-03T19:00:00Z')
+    const s2 = st.ingest(s, [rev(6, '2026-11-04T09:00:00Z', '12,20'), rev(7, '2026-11-20T09:00:00Z', '12,22')], rates)
+    expect(s2.ops.filter(o => o.status === 'matched')).toHaveLength(0)
+    expect(s2.incomes[1].amt.v).toBe(963.36)
+  })
+  it('две одинаковые ручные — два уведомления совпадают по одному', async () => {
+    const { st, s } = await setup()
+    st.addManual(s, 'revolut', -1, 10, '', rates, '2026-11-03T10:00:00Z')
+    st.addManual(s, 'revolut', -1, 10, '', rates, '2026-11-03T11:00:00Z')
+    const s2 = st.ingest(s, [rev(8, '2026-11-04T09:00:00Z', '10'), rev(9, '2026-11-04T10:00:00Z', '10'), rev(10, '2026-11-04T11:00:00Z', '10')], rates)
+    expect(s2.ops.filter(o => o.status === 'matched')).toHaveLength(2)
+    expect(s2.incomes[1].amt.v).toBe(970)
+  })
+  it('удалить ручную — деньги возвращаются, уведомление ждёт решения; «другие деньги» — учесть', async () => {
+    const { st, s } = await setup()
+    st.addManual(s, 'revolut', -1, 12.22, '', rates, '2026-11-03T19:00:00Z')
+    const s2 = st.ingest(s, [rev(5, '2026-11-04T09:00:00Z', '12,22')], rates)
+    st.unmatch(s2, 5, rates)
+    expect(s2.incomes[1].amt.v).toBe(975.56)
+    const m = s2.ops.find(o => o.manual)!
+    st.removeManual(s2, m.id, rates)
+    expect(s2.incomes[1].amt.v).toBe(987.78)
+  })
+  it('предупреждение: такое уведомление уже пришло', async () => {
+    const { st, s } = await setup()
+    const s2 = st.ingest(s, [rev(5, '2026-11-04T09:00:00Z', '12,22')], rates)
+    const probe = { id: 0, at: '2026-11-05T09:00:00Z', bank: 'revolut', text: '', amount: 12.22, cur: 'PLN', dir: -1, status: 'unknown' } as const
+    expect(st.findAutoTwin(s2, { ...probe })?.id).toBe(5)
+  })
+})

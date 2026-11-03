@@ -4,8 +4,8 @@ import { fetchComments, inboxNumber, loadData, loadSettings, saveData, saveSetti
 import { cachedRates, fetchRates, type RatesInfo } from './rates'
 import { brandsOf, KAS_LOGO } from './brands'
 import { Background } from './Background'
-import { applyOp, emptyState, ingest, migrate, uid, undoOp } from './state'
-import type { Bank, State } from './types'
+import { addManual, applyOp, emptyState, findAutoTwin, ingest, migrate, removeManual, uid, undoOp, unmatch } from './state'
+import type { Bank, Op, Rates, State } from './types'
 import { CUR_SIGN } from './types'
 import { fmt, Logos, Num, Rows, Txt } from './ui'
 
@@ -541,19 +541,37 @@ export default function App() {
               </p>
             ),
           )}
+          <ManualForm state={state} upd={upd} rates={R} />
           {state.ops.length === 0 && <p className="muted">Пока ничего не пришло.</p>}
           <table className="rows ops">
             <tbody>
               {state.ops.map((o, i) => (
                 <tr key={o.id} className={o.status}>
                   <td className="muted nowrap">{ruDate(o.at)}</td>
-                  <td className="nowrap">{BANK_NAME[o.bank]}</td>
-                  <td className="optext">{o.text}</td>
+                  <td className="nowrap">
+                    <span className="nmcell">
+                      <Logos name={BANK_NAME[o.bank]} />
+                      {BANK_NAME[o.bank]}
+                    </span>
+                  </td>
+                  <td className="optext">
+                    {o.manual && <span className="tag">вручную</span>} {o.manual ? o.note || '' : o.text}
+                    {o.status === 'matched' && <div className="matchnote">Совпало с ручной записью — второй раз не учтено</div>}
+                    {o.manual && o.matchedWith && <div className="matchnote">Подтверждено уведомлением банка</div>}
+                  </td>
                   <td className="r nowrap">
-                    {o.amount === null ? '?' : `${o.status === 'applied' ? (o.dir > 0 ? '+' : '−') : ''}${fmt(o.amount, 2)} ${CUR_SIGN[o.cur]}`}
+                    {o.amount === null ? '?' : `${o.status === 'applied' || o.status === 'matched' ? (o.dir > 0 ? '+' : '−') : ''}${fmt(o.amount, 2)} ${CUR_SIGN[o.cur]}`}
                   </td>
                   <td className="nowrap">
-                    {o.status === 'applied' ? (
+                    {o.manual ? (
+                      <button className="add" onClick={() => confirm('Удалить ручную запись? Сумма вернётся на счёт.') && upd(s => removeManual(s, o.id, R))}>
+                        удалить
+                      </button>
+                    ) : o.status === 'matched' ? (
+                      <button className="add" onClick={() => confirm('Это другие деньги? Тогда операция будет учтена отдельно.') && upd(s => unmatch(s, o.id, R))}>
+                        это другие деньги
+                      </button>
+                    ) : o.status === 'applied' ? (
                       <button className="add" onClick={() => upd(s => undoOp(s, s.ops[i], R))}>
                         отменить
                       </button>
@@ -585,6 +603,50 @@ export default function App() {
       {tab === 'Настройки' && <SettingsTab state={state} upd={upd} settings={settings} setSettings={setSettings} inbox={inbox.current} />}
 
       <footer className="small">{status}</footer>
+    </div>
+  )
+}
+
+/** Ручная запись операции, когда уведомление не пришло. Вносится по «Ввод». */
+function ManualForm({ state, upd, rates }: { state: State; upd: (f: (s: State) => void) => void; rates: Rates }) {
+  const [bank, setBank] = useState<Bank>('revolut')
+  const [dir, setDir] = useState<1 | -1>(-1)
+  const [amount, setAmount] = useState('')
+  const [note, setNote] = useState('')
+  const submit = () => {
+    const v = Math.round(Number(amount.replace(/[\s\u00a0]/g, '').replace(',', '.')) * 100) / 100
+    if (!(v > 0)) return
+    const probe: Op = { id: 0, at: new Date().toISOString(), bank, text: '', amount: v, cur: 'PLN', dir, status: 'unknown' }
+    const twin = findAutoTwin(state, probe)
+    if (twin && !confirm(`Похожая операция уже пришла от банка ${ruDate(twin.at)}: ${dir > 0 ? '+' : '−'}${fmt(v)} zł. Всё равно внести вручную?`)) return
+    upd(s => void addManual(s, bank, dir, v, note.trim(), rates))
+    setAmount('')
+    setNote('')
+  }
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      submit()
+    }
+  }
+  return (
+    <div className="manual">
+      <b>+ операция вручную</b>
+      <select value={bank} onChange={e => setBank(e.target.value as Bank)}>
+        <option value="revolut">Revolut</option>
+        <option value="pko">PKO</option>
+      </select>
+      <span className="seg">
+        <button className={dir < 0 ? 'on' : ''} onClick={() => setDir(-1)}>
+          − ушло
+        </button>
+        <button className={dir > 0 ? 'on' : ''} onClick={() => setDir(1)}>
+          + пришло
+        </button>
+      </span>
+      <input className={'num' + (amount ? ' pending' : '')} placeholder="0,00" value={amount} enterKeyHint="enter" onChange={e => setAmount(e.target.value)} onKeyDown={onKey} />
+      <input className="note" placeholder="заметка (жене, Żabka…)" value={note} enterKeyHint="enter" onChange={e => setNote(e.target.value)} onKeyDown={onKey} />
+      <span className="muted small">↵ Ввод — внести. Если позже придёт уведомление на ту же сумму, второй раз оно не посчитается.</span>
     </div>
   )
 }
