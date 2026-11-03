@@ -230,7 +230,7 @@ export default function App() {
                       </div>
                     </td>
                     <td>
-                      <Num width={44} value={x.day} onChange={v => upd(s => void (s.subs[i].day = v))} />
+                      <Num width={44} money={false} value={x.day} onChange={v => upd(s => void (s.subs[i].day = v))} />
                     </td>
                     <td className="r">
                       <Num width={80} value={x.price} onChange={v => upd(s => void (s.subs[i].price = v))} />
@@ -315,7 +315,7 @@ export default function App() {
           <div className="card wide">
             <h3>
               <img className="kas" src={KAS_LOGO} alt="" />
-              Доходы <Num width={64} value={state.tax.year} onChange={v => upd(s => void (s.tax.year = v))} /> · Urząd Skarbowy
+              Доходы <Num width={64} money={false} value={state.tax.year} onChange={v => upd(s => void (s.tax.year = v))} /> · Urząd Skarbowy
             </h3>
             <div className="taxcols">
               {state.tax.columns.map((col, ci) => {
@@ -333,7 +333,7 @@ export default function App() {
                     <div className="taxline muted">
                       <span>налог</span>
                       <span>
-                        <Num width={52} value={col.rate} onChange={v => upd(s => void (s.tax.columns[ci].rate = v))} /> %
+                        <Num width={52} money={false} value={col.rate} onChange={v => upd(s => void (s.tax.columns[ci].rate = v))} /> %
                       </span>
                     </div>
                     {col.items.map((it, ii) => (

@@ -4,7 +4,8 @@ import { toPln } from './calc'
 import { uid } from './state'
 import { CURRENCIES, CUR_SIGN, type Money, type Rates, type Row } from './types'
 
-export const fmt = (n: number, d = 0) =>
+/** Денежные суммы — всегда с сотыми. */
+export const fmt = (n: number, d = 2) =>
   (Math.round(n * 10 ** d) / 10 ** d).toLocaleString('ru-RU', { minimumFractionDigits: d, maximumFractionDigits: d })
 
 const parseNum = (s: string) => {
@@ -70,11 +71,24 @@ function Draft({
   )
 }
 
-const numText = (v: number) => (v ? String(v).replace('.', ',') : '')
+const numText = (v: number, money: boolean) => (!v ? '' : money ? v.toFixed(2).replace('.', ',') : String(v).replace('.', ','))
 
-/** Число: запятая и пробелы допустимы, вносится по «Ввод». */
-export function Num({ value, onChange, className, width }: { value: number; onChange: (n: number) => void; className?: string; width?: number }) {
-  return <Draft shown={numText(value)} commit={t => onChange(parseNum(t))} className={className ?? 'num'} width={width} placeholder="0" />
+/** Число: запятая и пробелы допустимы, вносится по «Ввод». Денежное (по умолчанию) — с сотыми; для дня, года, процента — money={false}. */
+export function Num({
+  value,
+  onChange,
+  className,
+  width,
+  money = true,
+}: {
+  value: number
+  onChange: (n: number) => void
+  className?: string
+  width?: number
+  money?: boolean
+}) {
+  const commit = (t: string) => onChange(money ? Math.round(parseNum(t) * 100) / 100 : parseNum(t))
+  return <Draft shown={numText(value, money)} commit={commit} className={className ?? 'num'} width={width} placeholder={money ? '0,00' : '0'} />
 }
 
 /** Текст (название строки), вносится по «Ввод». */
@@ -187,7 +201,7 @@ export function Rows({
               </td>
               {withPlan && (
                 <td className="r">
-                  <Num className="num plan" width={64} value={r.plan ?? 0} onChange={plan => set(i, { plan })} />
+                  <Num className="num plan" width={86} value={r.plan ?? 0} onChange={plan => set(i, { plan })} />
                 </td>
               )}
               <td className="r">
