@@ -558,6 +558,7 @@ export default function App() {
                     {o.manual && <span className="tag">вручную</span>} {o.manual ? o.note || '' : o.text}
                     {o.status === 'matched' && <div className="matchnote">Совпало с ручной записью — второй раз не учтено</div>}
                     {o.manual && o.matchedWith && <div className="matchnote">Подтверждено уведомлением банка</div>}
+                    {o.subId && <div className="matchnote">✓ Подписка «{state.subs.find(x => x.id === o.subId)?.name ?? '—'}» отмечена оплаченной</div>}
                   </td>
                   <td className="r nowrap">
                     {o.amount === null ? '?' : `${o.status === 'applied' || o.status === 'matched' ? (o.dir > 0 ? '+' : '−') : ''}${fmt(o.amount, 2)} ${CUR_SIGN[o.cur]}`}

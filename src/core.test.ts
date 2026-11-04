@@ -210,3 +210,53 @@ describe('ручные операции и защита от двойного у
     expect(st.findAutoTwin(s2, { ...probe })?.id).toBe(5)
   })
 })
+
+describe('списание на подписку ставит галочку', () => {
+  async function setup() {
+    const st = await import('./state')
+    const s = sample()
+    s.bankLinks = { pko: 'a', revolut: 'b' }
+    s.subs = [
+      { id: 'h', name: 'Hetzner', day: 5, price: 50, paid: false },
+      { id: 'i', name: 'iCloud+', day: 17, price: 5, paid: false },
+      { id: 'c', name: 'Canal+ / Polsat', day: 19, price: 120, paid: false },
+      { id: 'f', name: 'Цветы', day: 18, price: 300, paid: false },
+      { id: 'y', name: 'YouTube Premium', day: 8, price: 30, paid: true },
+    ]
+    return { st, s }
+  }
+  const c = (id: number, body: string) => ({ id, created_at: '2026-11-05T09:00:00Z', body })
+  it('однозначное название — галочка сразу, даже если цена другая', async () => {
+    const { st, s } = await setup()
+    const s2 = st.ingest(s, [c(1, 'revolut: Zapłacono 54,10 zł w HETZNER ONLINE GMBH')], rates)
+    expect(s2.subs.find(x => x.id === 'h')!.paid).toBe(true)
+    expect(s2.ops[0].subId).toBe('h')
+  })
+  it('общее название — только если сумма близка к цене', async () => {
+    const { st, s } = await setup()
+    const s2 = st.ingest(s, [c(1, 'revolut: Zapłacono 4,99 zł w APPLE.COM/BILL'), c(2, 'revolut: Zapłacono 49,99 zł w APPLE.COM/BILL')], rates)
+    expect(s2.subs.find(x => x.id === 'i')!.paid).toBe(true)
+    expect(s2.ops.find(o => o.id === 2)!.subId).toBeUndefined()
+  })
+  it('два бренда в одной строке, подписка без бренда, поступление не считается', async () => {
+    const { st, s } = await setup()
+    const s2 = st.ingest(s, [c(1, 'PKO: -120,00 PLN Płatność kartą POLSAT BOX'), c(2, 'revolut: Wpływ 300 zł kwiaty'), c(3, 'revolut: Zapłacono 300 zł Kwiaciarnia Цветы')], rates)
+    expect(s2.subs.find(x => x.id === 'c')!.paid).toBe(true)
+    expect(s2.ops.find(o => o.id === 2)!.subId).toBeUndefined()
+    expect(s2.subs.find(x => x.id === 'f')!.paid).toBe(true)
+  })
+  it('уже оплаченная не трогается; отмена операции снимает галочку', async () => {
+    const { st, s } = await setup()
+    const s2 = st.ingest(s, [c(1, 'revolut: Zapłacono 30 zł YouTube'), c(2, 'revolut: Zapłacono 50 zł Hetzner')], rates)
+    expect(s2.ops.find(o => o.id === 1)!.subId).toBeUndefined()
+    st.undoOp(s2, s2.ops.find(o => o.id === 2)!, rates)
+    expect(s2.subs.find(x => x.id === 'h')!.paid).toBe(false)
+  })
+  it('ручная запись с заметкой тоже ставит галочку, удаление снимает', async () => {
+    const { st, s } = await setup()
+    const op = st.addManual(s, 'revolut', -1, 50, 'Hetzner за ноябрь', rates)
+    expect(s.subs.find(x => x.id === 'h')!.paid).toBe(true)
+    st.removeManual(s, op.id, rates)
+    expect(s.subs.find(x => x.id === 'h')!.paid).toBe(false)
+  })
+})

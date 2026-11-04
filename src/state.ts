@@ -1,4 +1,4 @@
-import { RENAMES } from './brands'
+import { merchantHit, RENAMES } from './brands'
 import { toPln } from './calc'
 import { parseNotification, splitComment } from './parse'
 import type { Op, Rates, State } from './types'
@@ -96,6 +96,7 @@ export function applyOp(s: State, op: Op, dir: 1 | -1, rates: Rates) {
     row.amt = { ...row.amt, v: op.balance }
     op.dir = dir
     op.status = 'applied'
+    markSub(s, op, rates)
     return
   }
   const pln = dir * toPln({ v: op.amount, cur: op.cur }, rates)
@@ -103,6 +104,7 @@ export function applyOp(s: State, op: Op, dir: 1 | -1, rates: Rates) {
     op.dir = dir
     op.status = 'applied'
     op.pln = pln
+    markSub(s, op, rates)
   }
 }
 
@@ -112,6 +114,7 @@ export function undoOp(s: State, op: Op, rates: Rates) {
   moveLinked(s, op, -op.pln, rates)
   op.status = 'unknown'
   op.pln = undefined
+  unmarkSub(s, op)
 }
 
 const DAY_MS = 864e5
@@ -146,6 +149,7 @@ export function addManual(s: State, bank: Op['bank'], dir: 1 | -1, amount: numbe
     op.status = 'applied'
     op.pln = pln
   }
+  if (dir < 0) markSub(s, op, rates)
   s.ops.unshift(op)
   return op
 }
@@ -156,6 +160,7 @@ export function removeManual(s: State, id: number, rates: Rates) {
   if (i < 0) return
   const m = s.ops[i]
   if (m.status === 'applied' && m.pln !== undefined) moveLinked(s, m, -m.pln, rates)
+  unmarkSub(s, m)
   const twin = s.ops.find(o => o.id === m.matchedWith)
   if (twin) {
     twin.status = 'unknown'
@@ -180,4 +185,31 @@ export function unmatch(s: State, id: number, rates: Rates) {
       op.pln = pln
     }
   }
+}
+
+/**
+ * Списание на подписку: ставит галочку «оплачено» у подписки, которую узнали в тексте.
+ * Однозначное название (Hetzner, OpenAI…) засчитывается сразу; общее (APPLE.COM/BILL, «opłata») — только если сумма близка к цене.
+ */
+export function markSub(s: State, op: Op, rates: Rates) {
+  if (op.dir !== -1 || op.amount === null || op.subId) return
+  const text = op.manual ? op.note || '' : op.text
+  if (!text) return
+  const pln = toPln({ v: op.amount, cur: op.cur }, rates)
+  const near = (price: number) => price > 0 && Math.abs(pln - price) <= Math.max(2, price * 0.25)
+  const found = s.subs
+    .filter(x => !x.paid)
+    .map(x => ({ x, hit: merchantHit(x.name, text) }))
+    .filter(({ x, hit }) => hit === 2 || (hit === 1 && near(x.price)))
+    .sort((a, b) => b.hit - a.hit || Math.abs(pln - a.x.price) - Math.abs(pln - b.x.price))[0]
+  if (!found) return
+  found.x.paid = true
+  op.subId = found.x.id
+}
+
+/** Операцию отменили — снять галочку, которую она поставила. */
+function unmarkSub(s: State, op: Op) {
+  const sub = s.subs.find(x => x.id === op.subId)
+  if (sub) sub.paid = false
+  op.subId = undefined
 }

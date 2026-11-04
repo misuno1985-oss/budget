@@ -63,6 +63,8 @@ export interface Op {
   balance?: number
   /** Сколько злотых изменилось на счёте. */
   pln?: number
+  /** Подписка, которую это списание отметило оплаченной. */
+  subId?: string
 }
 
 export interface PokerWin {
