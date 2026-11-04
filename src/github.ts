@@ -1,5 +1,5 @@
 import type { Comment } from './state'
-import type { State } from './types'
+import type { BankFeed, State } from './types'
 
 export interface Settings {
   token: string
@@ -98,4 +98,15 @@ export async function fetchComments(st: Settings, issue: number): Promise<Commen
     if (part.length < 100) break
   }
   return all
+}
+
+/** Выписка банков, которую три раза в день собирает GitHub (bank.json). Нет файла — null. */
+export async function loadBank(st: Settings): Promise<BankFeed | null> {
+  try {
+    const f = await api(st, '/contents/bank.json')
+    return JSON.parse(b64decode(f.content))
+  } catch (e: any) {
+    if (e.status === 404) return null
+    throw e
+  }
 }

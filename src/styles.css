@@ -118,6 +118,11 @@ input.chk:checked::after { content: ''; width: 11px; height: 6px; border-left: 3
 .field { display: block; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
 .field input, .field select { display: block; width: 100%; margin-top: 3px; color: var(--text); }
 .warn { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 6px 9px; }
+.banner { margin: 0 0 10px; position: relative; }
+.tag.bank { color: #fff; background: #0a7d5a; }
+.bankline { margin: 2px 0 10px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.bankline .warn { flex-basis: 100%; }
+.kpi.inner { grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 10px 0 14px; }
 .ops .optext { font-size: 12px; }
 .ops tr.ignored { opacity: 0.5; }
 .ops tr.unknown td { background: var(--warn-bg); }
@@ -137,6 +142,7 @@ footer { margin-top: 16px; color: rgba(255, 255, 255, 0.85); }
 @media (max-width: 760px) {
   .grid, .taxcols { grid-template-columns: minmax(0, 1fr); }
   .kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpi.inner { grid-template-columns: 1fr; }
   .tile b { font-size: 18px; }
   input.num { width: 86px; }
   .ops td.optext { display: none; }

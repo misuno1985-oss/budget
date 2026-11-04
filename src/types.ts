@@ -88,6 +88,45 @@ export interface Op {
   subPart?: number
   /** Куда операция автоматически разнесена (налоги, взносы, расходы). existed — такая запись уже была. */
   booked?: { kind: 'income' | 'taxpay' | 'expense'; colId?: string; itemId?: string; rowId?: string; amount?: number; existed?: boolean }
+  /** Операция взята из выписки банка (уведомление не пришло). На остаток не влияет — он берётся из банка. */
+  fromBank?: boolean
+  /** Какой операции в выписке банка соответствует. */
+  bankTx?: string
+  /** В банке операция ещё «в обработке». */
+  bankPending?: boolean
+}
+
+/** Операция из выписки банка (bank.json, собирается на GitHub через Enable Banking). */
+export interface BankTx {
+  id: string
+  date: string
+  amount: number
+  cur: string
+  dir: 1 | -1
+  pending: boolean
+  text: string
+}
+
+export interface BankAccount {
+  uid: string
+  bank: Bank
+  /** pko, revolut — свои счета; daughter — счёт дочки; revolut-eur, revolut-usd — валютные. */
+  role: string
+  cur: string
+  last4: string
+  /** Доступные средства. */
+  available: number
+  booked: number | null
+  /** Когда данные получены из банка. */
+  at: string
+  tx: BankTx[]
+}
+
+export interface BankFeed {
+  fetchedAt: string
+  sessions: Record<string, { valid_until: string }>
+  accounts: BankAccount[]
+  errors: string[]
 }
 
 export interface PokerWin {
@@ -123,6 +162,8 @@ export interface State {
    */
   rules?: { kind: 'income' | 'skip' | 'taxpay' | 'expense'; match: string; column?: string; row?: string; rent?: 'chynsh' | 'electr'; keepBalance?: boolean }[]
   /** Как было до начала нового месяца — чтобы можно было вернуть, если дату выбрали по ошибке. */
+  /** Сверка с банком: с какой даты операции из выписки добавляются в учёт, какая выписка уже учтена. */
+  bankSync?: { since: string; fetchedAt: string }
   lastCycle?: { at: string; payday: string; facts: { id: string; v: number }[]; subs: { id: string; paid: boolean; paidAmt?: number }[] }
 }
 

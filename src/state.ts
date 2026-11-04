@@ -133,13 +133,13 @@ const DAY_MS = 864e5
 const sameAmount = (a: Op, b: Op) => a.amount !== null && b.amount !== null && a.cur === b.cur && Math.abs(a.amount - b.amount) < 0.005
 
 /**
- * Ручная запись, которой соответствует пришедшее уведомление: тот же банк, та же сумма,
+ * Ручная запись (или операция, уже взятая из выписки банка), которой соответствует пришедшее уведомление: тот же банк, та же сумма,
  * то же направление (если банк его указал), внесена не раньше чем за 10 дней и не позже чем через день.
  */
 export function findManualTwin(s: State, op: Op): Op | undefined {
   const t = Date.parse(op.at)
   return s.ops
-    .filter(m => m.manual && m.status === 'applied' && !m.matchedWith && m.bank === op.bank && sameAmount(m, op))
+    .filter(m => (m.manual || m.fromBank) && m.status === 'applied' && !m.matchedWith && m.bank === op.bank && sameAmount(m, op))
     .filter(m => (op.dir === 0 || m.dir === op.dir) && t - Date.parse(m.at) <= 10 * DAY_MS && Date.parse(m.at) - t <= DAY_MS)
     .sort((a, b) => Date.parse(a.at) - Date.parse(b.at))[0]
 }

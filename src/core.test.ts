@@ -408,3 +408,74 @@ describe('новая дата поступления — новый месяц',
     expect(s.subs[1].paid).toBe(true)
   })
 })
+
+describe('сверка с выпиской банка', () => {
+  const feedOf = (fetchedAt: string, available: number, tx: any[], role = 'pko') => ({
+    fetchedAt,
+    sessions: { pko: { valid_until: '2027-05-01T00:00:00Z' } },
+    errors: [],
+    accounts: [{ uid: 'u1', bank: role as any, role, cur: 'PLN', last4: '0000', available, booked: null, at: fetchedAt, tx }],
+  })
+  const t = (id: string, date: string, amount: number, dir: 1 | -1, text = 'Sklep', pending = false) => ({ id, date, amount, cur: 'PLN', dir, pending, text })
+
+  it('пропущенная операция добавляется, остаток — как в банке', async () => {
+    const { ingest } = await import('./state')
+    const { reconcile } = await import('./bank')
+    let s = sample()
+    s.bankLinks = { pko: 'a', revolut: 'b' }
+    s = ingest(s, [{ id: 1, created_at: '2026-11-04T09:00:00Z', body: 'PKO: 4 lis 2026 o 10:00 - Zapłacono 10,00 zł w Piekarnia' }], rates)
+    expect(s.incomes[0].amt.v).toBe(140)
+    const f = feedOf('2026-11-04T16:00:00Z', 125, [t('A', '2026-11-04', 10, -1, 'Piekarnia'), t('B', '2026-11-04', 15, -1, 'Kiosk')])
+    const s2 = reconcile(s, f, rates)
+    expect(s2.ops.filter(o => o.fromBank).map(o => o.amount)).toEqual([15])
+    expect(s2.ops.find(o => o.amount === 10)!.bankTx).toBe('A')
+    expect(s2.incomes[0].amt.v).toBe(125)
+    // Та же выписка второй раз ничего не меняет.
+    expect(reconcile(s2, f, rates)).toBe(s2)
+  })
+
+  it('прошлое до подключения не добавляется', async () => {
+    const { reconcile } = await import('./bank')
+    const s = sample()
+    s.bankLinks = { pko: 'a', revolut: 'b' }
+    const s2 = reconcile(s, feedOf('2026-11-04T16:00:00Z', 150, [t('old', '2026-11-01', 99, -1)]), rates)
+    expect(s2.ops).toHaveLength(0)
+    expect(s2.bankSync!.since).toBe('2026-11-04')
+  })
+
+  it('уведомление после выписки: не дублируется, а новое прибавляется к остатку', async () => {
+    const { ingest } = await import('./state')
+    const { reconcile } = await import('./bank')
+    let s = sample()
+    s.bankLinks = { pko: 'a', revolut: 'b' }
+    s = reconcile(s, feedOf('2026-11-04T16:00:00Z', 140, [t('A', '2026-11-04', 10, -1)]), rates)
+    // Запоздавший пуш о той же покупке и новый пуш о следующей.
+    s = ingest(s, [
+      { id: 5, created_at: '2026-11-04T16:10:00Z', body: 'PKO: 4 lis 2026 o 17:10 - Zapłacono 10,00 zł w Sklep' },
+      { id: 6, created_at: '2026-11-04T17:00:00Z', body: 'PKO: 4 lis 2026 o 18:00 - Zapłacono 7,00 zł w Kawa' },
+    ], rates)
+    expect(s.ops.find(o => o.id === 5)!.status).toBe('matched')
+    expect(s.incomes[0].amt.v).toBe(133)
+    // Следующая выписка ещё не видит кофе (он в обработке у банка) — остаток всё равно учитывает пуш.
+    const s2 = reconcile(s, feedOf('2026-11-04T16:30:00Z', 140, [t('A', '2026-11-04', 10, -1)]), rates)
+    expect(s2.incomes[0].amt.v).toBe(133)
+  })
+
+  it('«в обработке» → проведено с новым номером: без дубля', async () => {
+    const { reconcile } = await import('./bank')
+    let s = sample()
+    s.bankLinks = { pko: 'a', revolut: 'b' }
+    s = reconcile(s, feedOf('2026-11-04T10:00:00Z', 130, [t('P1', '2026-11-04', 20, -1, 'Kino', true)]), rates)
+    s = reconcile(s, feedOf('2026-11-05T10:00:00Z', 130, [t('B1', '2026-11-05', 20, -1, 'Kino')]), rates)
+    expect(s.ops.filter(o => o.amount === 20)).toHaveLength(1)
+    expect(s.ops[0]).toMatchObject({ bankTx: 'B1', bankPending: false })
+  })
+
+  it('из выписки ставится галочка подписки', async () => {
+    const { reconcile } = await import('./bank')
+    const s = sample()
+    s.bankLinks = { pko: 'a', revolut: 'b' }
+    const s2 = reconcile(s, feedOf('2026-11-05T10:00:00Z', 100, [t('H', '2026-11-05', 50, -1, 'HETZNER ONLINE GMBH')]), rates)
+    expect(s2.subs.find(x => x.id === 's1')!.paid).toBe(true)
+  })
+})

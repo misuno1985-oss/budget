@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { capital, itemPln, month, prepaidLeft, subPln, tax } from './calc'
-import { fetchComments, inboxNumber, loadData, loadSettings, saveData, saveSettings, type Settings } from './github'
+import { fetchComments, inboxNumber, loadBank, loadData, loadSettings, saveData, saveSettings, type Settings } from './github'
 import { cachedRates, fetchRates, nbpRateBefore, type RatesInfo } from './rates'
 import { bookedLabel } from './autobook'
 import { brandsOf, KAS_LOGO } from './brands'
 import { Background } from './Background'
+import { mainAccount, reconcile, sessionDaysLeft } from './bank'
 import { addManual, applyOp, emptyState, findAutoTwin, ingest, migrate, removeManual, setPayday, uid, undoNewCycle, undoOp, unmatch } from './state'
-import type { Bank, Op, Rates, State, TaxItem } from './types'
+import type { Bank, BankFeed, Op, Rates, State, TaxItem } from './types'
 import { CUR_SIGN } from './types'
 import { fmt, Logos, MoneyInput, Num, Rows, Txt } from './ui'
 
 const LKEY = 'budget.state'
-const TABS = ['Месяц', 'Капитал', 'Налоги', 'Покер', 'Квартира', 'Операции', 'Настройки'] as const
+const TABS = ['Месяц', 'Капитал', 'Налоги', 'Покер', 'Квартира', 'Операции', 'Дочка', 'Настройки'] as const
 type Tab = (typeof TABS)[number]
 const BANK_NAME: Record<Bank, string> = { pko: 'PKO', revolut: 'Revolut' }
 
@@ -23,6 +24,16 @@ function localState(): State {
   return emptyState()
 }
 
+const BKEY = 'budget.bank'
+function cachedFeed(): BankFeed | null {
+  try {
+    return JSON.parse(localStorage.getItem(BKEY) || 'null')
+  } catch {
+    return null
+  }
+}
+const ruDay = (d: string) => d.slice(0, 10).split('-').reverse().join('.')
+
 const ruDate = (iso: string) => new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 
 export default function App() {
@@ -32,6 +43,7 @@ export default function App() {
   const [settings, setSettings] = useState<Settings>(loadSettings)
   const [status, setStatus] = useState('')
   const [today, setToday] = useState(() => new Date())
+  const [feed, setFeed] = useState<BankFeed | null>(cachedFeed)
   const sha = useRef<string | null>(null)
   const ready = useRef(false)
   const inbox = useRef<number | null>(null)
@@ -54,6 +66,18 @@ export default function App() {
       setState(prev => (comments.some(c => c.id > prev.lastCommentId) ? ingest(prev, comments, rates.rates) : prev))
     } catch {
       setStatus('Не удалось прочитать уведомления')
+    }
+    try {
+      const f = await loadBank(settings)
+      if (f) {
+        setFeed(f)
+        try {
+          localStorage.setItem(BKEY, JSON.stringify(f))
+        } catch {}
+        setState(prev => reconcile(prev, f, rates.rates))
+      }
+    } catch {
+      setStatus('Не удалось прочитать выписку банка')
     }
   }, [settings, rates])
 
@@ -140,6 +164,7 @@ export default function App() {
   const c = capital(state, R, today)
   const t = tax(state)
   const unknown = state.ops.filter(o => o.status === 'unknown').length
+  const expiring = sessionDaysLeft(feed).filter(x => x.days < 14)
 
   // Валютные доходы без курса (добавлены из уведомления) — подтянуть курс NBP за день до, чтобы налог считался сразу.
   const fetching = useRef(new Set<string>())
@@ -171,6 +196,14 @@ export default function App() {
           <span className="muted"> NBP {rates.date && rates.date.split('-').reverse().slice(0, 2).join('.')}</span>
         </div>
       </header>
+
+      {expiring.map(x => (
+        <p key={x.bank} className="warn small banner">
+          {x.days < 0
+            ? `Доступ к ${BANK_NAME[x.bank as Bank] ?? x.bank} закончился — выписка не обновляется. Нужно заново войти в банк.`
+            : `Доступ к ${BANK_NAME[x.bank as Bank] ?? x.bank} закончится через ${x.days} дн. — нужно будет заново войти в банк.`}
+        </p>
+      ))}
 
       <section className="kpi">
         <div className="tile">
@@ -582,6 +615,7 @@ export default function App() {
               </p>
             ),
           )}
+          <BankLine feed={feed} />
           <ManualForm state={state} upd={upd} rates={R} />
           {state.ops.length === 0 && <p className="muted">Пока ничего не пришло.</p>}
           <table className="rows ops">
@@ -596,8 +630,16 @@ export default function App() {
                     </span>
                   </td>
                   <td className="optext">
-                    {o.manual && <span className="tag">вручную</span>} {o.manual ? o.note || '' : o.text}
-                    {o.status === 'matched' && <div className="matchnote">Совпало с ручной записью — второй раз не учтено</div>}
+                    {o.manual && <span className="tag">вручную</span>}
+                    {o.fromBank && <span className="tag bank">из банка</span>}
+                    {o.bankPending && <span className="tag">в обработке</span>} {o.manual ? o.note || '' : o.text}
+                    {o.status === 'matched' &&
+                      (state.ops.find(x => x.id === o.matchedWith)?.fromBank ? (
+                        <div className="matchnote">Уже учтено по выписке банка — второй раз не учтено</div>
+                      ) : (
+                        <div className="matchnote">Совпало с ручной записью — второй раз не учтено</div>
+                      ))}
+                    {!o.fromBank && o.bankTx && !o.bankPending && <div className="matchnote">✓ Есть в выписке банка</div>}
                     {o.manual && o.matchedWith && <div className="matchnote">Подтверждено уведомлением банка</div>}
                     {bookedLabel(state, o) && <div className="matchnote">{bookedLabel(state, o)}</div>}
                     {o.subId && <div className="matchnote">✓ Подписка «{state.subs.find(x => x.id === o.subId)?.name ?? '—'}» отмечена оплаченной</div>}
@@ -642,6 +684,8 @@ export default function App() {
           </table>
         </div>
       )}
+
+      {tab === 'Дочка' && <DaughterTab feed={feed} />}
 
       {tab === 'Настройки' && <SettingsTab state={state} upd={upd} settings={settings} setSettings={setSettings} inbox={inbox.current} />}
 
@@ -833,6 +877,86 @@ function SettingsTab({
         >
           Скачать копию
         </button>
+      </div>
+    </div>
+  )
+}
+
+/** Когда банк последний раз отдал выписку и что пошло не так. */
+function BankLine({ feed }: { feed: BankFeed | null }) {
+  if (!feed) return <p className="muted small">Выписка банка ещё не получена — GitHub собирает её три раза в день.</p>
+  const accs = (['pko', 'revolut'] as Bank[]).map(b => mainAccount(feed, b)).filter(Boolean)
+  return (
+    <div className="bankline small">
+      <span className="muted">Выписка банка от {ruDate(feed.fetchedAt)}:</span>{' '}
+      {accs.map(a => (
+        <span key={a!.uid} className="nowrap">
+          {BANK_NAME[a!.bank]} <b>{fmt(a!.available)} zł</b>
+          {Date.parse(feed.fetchedAt) - Date.parse(a!.at) > 36e5 && <span className="muted"> (данные от {ruDate(a!.at)})</span>}
+          {'  '}
+        </span>
+      ))}
+      {feed.errors.length > 0 && <div className="warn">Банк не ответил: {feed.errors.map(e => e.split(':')[0]).join(', ')} — показаны прежние данные.</div>}
+    </div>
+  )
+}
+
+/** Счёт дочки: остаток и движения по выписке банка. Только просмотр, в бюджет не входит. */
+function DaughterTab({ feed }: { feed: BankFeed | null }) {
+  const acc = feed?.accounts.find(a => a.role === 'daughter')
+  if (!acc)
+    return (
+      <div className="card">
+        <h3>Счёт дочки</h3>
+        <p className="muted">Выписка ещё не получена — GitHub собирает её три раза в день.</p>
+      </div>
+    )
+  const tx = [...acc.tx].sort((a, b) => b.date.localeCompare(a.date))
+  const inSum = tx.filter(t => t.dir > 0).reduce((a, t) => a + t.amount, 0)
+  const outSum = tx.filter(t => t.dir < 0).reduce((a, t) => a + t.amount, 0)
+  return (
+    <div className="grid">
+      <div className="card">
+        <div className="row-between">
+          <h3>
+            <span className="nmcell">
+              <Logos name="PKO" />
+              Счёт дочки · PKO …{acc.last4}
+            </span>
+          </h3>
+          <span className="muted small">обновлено {ruDate(acc.at)}</span>
+        </div>
+        <div className="kpi inner">
+          <div className="tile">
+            <p>На счёте</p>
+            <b>{fmt(acc.available)} zł</b>
+          </div>
+          <div className="tile">
+            <p>Пришло за 35 дней</p>
+            <b className="pos">+{fmt(inSum)} zł</b>
+          </div>
+          <div className="tile">
+            <p>Потрачено за 35 дней</p>
+            <b className="neg">−{fmt(outSum)} zł</b>
+          </div>
+        </div>
+        {tx.length === 0 && <p className="muted">Движений за последние 35 дней нет.</p>}
+        <table className="rows ops">
+          <tbody>
+            {tx.map(t => (
+              <tr key={t.id}>
+                <td className="muted nowrap">{ruDay(t.date)}</td>
+                <td className="dtext">
+                  {t.pending && <span className="tag">в обработке</span>} {t.text || '—'}
+                </td>
+                <td className={'r nowrap ' + (t.dir > 0 ? 'pos' : '')}>
+                  {t.dir > 0 ? '+' : '−'}
+                  {fmt(t.amount)} {t.cur === 'PLN' ? 'zł' : t.cur}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   )

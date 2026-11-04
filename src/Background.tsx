@@ -6,6 +6,7 @@ const THEMES: Record<string, [base: string, dark: string, light: string]> = {
   Покер: ['#123a31', '#06201a', '#7fd9b6'],
   Квартира: ['#22417e', '#0e1d42', '#a9c4ff'],
   Операции: ['#35285f', '#160f30', '#bfaeff'],
+  Дочка: ['#5a1f4f', '#2c0a26', '#f5a8e0'],
   Настройки: ['#33363b', '#15161a', '#bcc1c8'],
 }
 
