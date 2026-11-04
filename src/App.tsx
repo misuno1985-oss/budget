@@ -945,7 +945,7 @@ function DaughterTab({ feed }: { feed: BankFeed | null }) {
           <tbody>
             {tx.map(t => (
               <tr key={t.id}>
-                <td className="muted nowrap">{ruDay(t.date)}</td>
+                <td className="muted nowrap">{ruDay(t.date).slice(0, 5)}</td>
                 <td className="dtext">
                   {t.pending && <span className="tag">в обработке</span>} {txLabel(t.text)}
                 </td>

@@ -122,6 +122,7 @@ input.chk:checked::after { content: ''; width: 11px; height: 6px; border-left: 3
 .tag.bank { color: #fff; background: #0a7d5a; }
 .bankline { margin: 2px 0 10px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
 .bankline .warn { flex-basis: 100%; }
+.dtext { overflow-wrap: anywhere; }
 .kpi.inner { grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 10px 0 14px; }
 .ops .optext { font-size: 12px; }
 .ops tr.ignored { opacity: 0.5; }
