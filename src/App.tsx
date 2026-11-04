@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { capital, month, prepaidLeft, subPln, tax } from './calc'
+import { capital, itemPln, month, prepaidLeft, subPln, tax } from './calc'
 import { fetchComments, inboxNumber, loadData, loadSettings, saveData, saveSettings, type Settings } from './github'
-import { cachedRates, fetchRates, type RatesInfo } from './rates'
+import { cachedRates, fetchRates, nbpRateBefore, type RatesInfo } from './rates'
 import { brandsOf, KAS_LOGO } from './brands'
 import { Background } from './Background'
 import { addManual, applyOp, emptyState, findAutoTwin, ingest, migrate, removeManual, uid, undoOp, unmatch } from './state'
-import type { Bank, Op, Rates, State } from './types'
+import type { Bank, Op, Rates, State, TaxItem } from './types'
 import { CUR_SIGN } from './types'
 import { fmt, Logos, MoneyInput, Num, Rows, Txt } from './ui'
 
@@ -353,15 +353,18 @@ export default function App() {
                         <Num width={52} money={false} value={col.rate} onChange={v => upd(s => void (s.tax.columns[ci].rate = v))} /> %
                       </span>
                     </div>
-                    {col.items.map((it, ii) => (
-                      <div key={it.id} className="taxline">
-                        <button className="x" aria-label="Удалить" onClick={() => confirm('Удалить сумму?') && upd(s => void s.tax.columns[ci].items.splice(ii, 1))}>
-                          ×
-                        </button>
-                        <Num value={it.v} onChange={v => upd(s => void (s.tax.columns[ci].items[ii].v = v))} />
-                      </div>
-                    ))}
-                    <button className="add" onClick={() => upd(s => void s.tax.columns[ci].items.push({ id: uid(), v: 0 }))}>
+                    {[...col.items]
+                      .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
+                      .map(it => (
+                        <TaxItemRow
+                          key={it.id}
+                          it={it}
+                          rates={R}
+                          onChange={patch => upd(s => void Object.assign(s.tax.columns[ci].items.find(x => x.id === it.id)!, patch))}
+                          onDelete={() => confirm('Удалить поступление?') && upd(s => void (s.tax.columns[ci].items = s.tax.columns[ci].items.filter(x => x.id !== it.id)))}
+                        />
+                      ))}
+                    <button className="add" onClick={() => upd(s => void s.tax.columns[ci].items.push({ id: uid(), v: 0, date: new Date().toISOString().slice(0, 10) }))}>
                       + доход
                     </button>
                     <div className="taxline total">
@@ -621,6 +624,47 @@ export default function App() {
       {tab === 'Настройки' && <SettingsTab state={state} upd={upd} settings={settings} setSettings={setSettings} inbox={inbox.current} />}
 
       <footer className="small">{status}</footer>
+    </div>
+  )
+}
+
+/**
+ * Поступление дохода: дата и сумма как пришла на счёт. Двойной клик по сумме — валюта;
+ * для валюты курс NBP за последний рабочий день перед датой подтягивается сам.
+ */
+function TaxItemRow({ it, rates, onChange, onDelete }: { it: TaxItem; rates: Rates; onChange: (p: Partial<TaxItem>) => void; onDelete: () => void }) {
+  const cur = it.cur ?? 'PLN'
+  const refresh = (c: TaxItem['cur'], date?: string) => {
+    if (!c || c === 'PLN' || !date) return
+    nbpRateBefore(c, date).then(r => r && onChange({ rate: r.rate, rateDay: r.day }))
+  }
+  // Курса ещё нет (вписали вручную или данные старые) — подтянуть.
+  useEffect(() => {
+    if (cur !== 'PLN' && !it.rate) refresh(it.cur, it.date)
+  }, [it.cur, it.date, it.rate]) // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className="taxitem2">
+      <div className="taxline">
+        <input type="date" value={it.date ?? ''} onChange={e => (onChange({ date: e.target.value }), refresh(cur, e.target.value))} />
+        <MoneyInput
+          m={{ v: it.v, cur }}
+          rates={rates}
+          live
+          onChange={mo => {
+            const c = mo.cur === 'PLN' ? undefined : mo.cur
+            onChange({ v: mo.v, cur: c, ...(c ? {} : { rate: undefined, rateDay: undefined }) })
+            if (c !== it.cur) refresh(c, it.date)
+          }}
+        />
+        <button className="x" aria-label="Удалить" onClick={onDelete}>
+          ×
+        </button>
+      </div>
+      {cur !== 'PLN' && (
+        <div className="taxrate">
+          {it.rate ? `курс NBP ${fmt(it.rate, 4)} (${(it.rateDay ?? '').split('-').reverse().join('.')}) = ${fmt(itemPln(it))} zł` : 'курс NBP загружается…'}
+        </div>
+      )}
     </div>
   )
 }

@@ -30,11 +30,22 @@ export interface Sub {
   paidAmt?: number
 }
 
+/** Поступление дохода: дата и сумма как пришла. Валютное — по курсу NBP за последний рабочий день перед датой (rate). */
+export interface TaxItem {
+  id: string
+  v: number
+  date?: string
+  cur?: Cur
+  rate?: number
+  /** Дата курса NBP (последний рабочий день перед поступлением). */
+  rateDay?: string
+}
+
 export interface TaxColumn {
   id: string
   name: string
   rate: number
-  items: { id: string; v: number }[]
+  items: TaxItem[]
 }
 
 export interface RentPayment {

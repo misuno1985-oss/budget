@@ -21,7 +21,7 @@ export function emptyState(): State {
       year: new Date().getFullYear(),
       columns: [
         { id: uid(), name: 'Patreon', rate: 12, items: [] },
-        { id: uid(), name: 'Зарплата', rate: 6.1, items: [] },
+        { id: uid(), name: 'Зарплата', rate: 6, items: [] },
         { id: uid(), name: 'Buy Me a Coffee', rate: 12, items: [] },
       ],
       payments: [],

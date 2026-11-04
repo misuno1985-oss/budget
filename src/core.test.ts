@@ -307,3 +307,16 @@ describe('подписки частями и в евро', () => {
     expect(s2.ops.find(o => o.id === 3)!.subId).toBe('fl')
   })
 })
+
+describe('доходы в валюте для налога', () => {
+  it('злотые как пришли, евро и доллары — по курсу за день до, с округлением до гроша', async () => {
+    const { itemPln, tax } = await import('./calc')
+    expect(itemPln({ id: 'a', v: 1557.26 })).toBe(1557.26)
+    expect(itemPln({ id: 'b', v: 1000, cur: 'EUR', rate: 4.2142 })).toBe(4214.2)
+    expect(itemPln({ id: 'c', v: 10, cur: 'USD' })).toBe(0)
+    const s = sample()
+    s.tax.columns = [{ id: 'z', name: 'Зарплата', rate: 6, items: [{ id: 'e', v: 1000, cur: 'EUR', rate: 4, date: '2026-02-10' }, { id: 'p', v: 1000, date: '2026-02-11' }] }]
+    s.tax.payments = []
+    expect(tax(s).due).toBe(300)
+  })
+})

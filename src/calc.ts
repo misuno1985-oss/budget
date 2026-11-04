@@ -1,4 +1,4 @@
-import type { Money, Rates, Row, State, Sub } from './types'
+import type { Money, Rates, Row, State, Sub, TaxItem } from './types'
 
 export const DAY = 864e5
 
@@ -59,9 +59,12 @@ export function prepaidLeft(p: State['prepaid'], today: Date): number {
   return Math.max(0, (p.amount * (total - passed)) / total)
 }
 
+/** Доход в злотых для налога: злотые как пришли, валюта — по курсу NBP за день до поступления. */
+export const itemPln = (x: TaxItem) => (!x.cur || x.cur === 'PLN' ? x.v : Math.round(x.v * (x.rate ?? 0) * 100) / 100)
+
 export function tax(s: State) {
   const cols = s.tax.columns.map(c => {
-    const income = c.items.reduce((a, x) => a + x.v, 0)
+    const income = c.items.reduce((a, x) => a + itemPln(x), 0)
     return { id: c.id, income, due: (income * c.rate) / 100 }
   })
   const due = cols.reduce((a, c) => a + c.due, 0)

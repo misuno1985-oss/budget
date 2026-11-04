@@ -1,4 +1,4 @@
-import type { Rates } from './types'
+import type { Cur, Rates } from './types'
 
 const KEY = 'budget.rates'
 // Резерв на случай, если NBP недоступен и в памяти ничего нет.
@@ -38,4 +38,26 @@ export async function fetchRates(): Promise<RatesInfo> {
     localStorage.setItem(KEY, JSON.stringify(info))
   } catch {}
   return info
+}
+
+/**
+ * Курс NBP для налога: средний курс за последний рабочий день перед датой поступления.
+ * Доллар и евро — таблица A (ежедневно), белорусский и российский рубль — таблица B (раз в неделю).
+ */
+export async function nbpRateBefore(cur: Cur, date: string): Promise<{ rate: number; day: string } | null> {
+  if (cur === 'PLN' || !date) return null
+  const d = new Date(date + 'T12:00:00Z')
+  const iso = (x: Date) => x.toISOString().slice(0, 10)
+  const to = new Date(d.getTime() - 864e5)
+  const from = new Date(d.getTime() - 21 * 864e5)
+  const table = cur === 'USD' || cur === 'EUR' ? 'A' : 'B'
+  try {
+    const r = await fetch(`https://api.nbp.pl/api/exchangerates/rates/${table}/${cur}/${iso(from)}/${iso(to)}/?format=json`)
+    if (!r.ok) return null
+    const list = (await r.json()).rates as { effectiveDate: string; mid: number }[]
+    const last = list[list.length - 1]
+    return last ? { rate: last.mid, day: last.effectiveDate } : null
+  } catch {
+    return null
+  }
 }
