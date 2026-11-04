@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { capital, month, prepaidLeft, tax } from './calc'
+import { capital, month, prepaidLeft, subPln, tax } from './calc'
 import { fetchComments, inboxNumber, loadData, loadSettings, saveData, saveSettings, type Settings } from './github'
 import { cachedRates, fetchRates, type RatesInfo } from './rates'
 import { brandsOf, KAS_LOGO } from './brands'
@@ -7,7 +7,7 @@ import { Background } from './Background'
 import { addManual, applyOp, emptyState, findAutoTwin, ingest, migrate, removeManual, uid, undoOp, unmatch } from './state'
 import type { Bank, Op, Rates, State } from './types'
 import { CUR_SIGN } from './types'
-import { fmt, Logos, Num, Rows, Txt } from './ui'
+import { fmt, Logos, MoneyInput, Num, Rows, Txt } from './ui'
 
 const LKEY = 'budget.state'
 const TABS = ['Месяц', 'Капитал', 'Налоги', 'Покер', 'Квартира', 'Операции', 'Настройки'] as const
@@ -233,10 +233,27 @@ export default function App() {
                       <Num width={44} money={false} value={x.day} onChange={v => upd(s => void (s.subs[i].day = v))} />
                     </td>
                     <td className="r">
-                      <Num width={80} value={x.price} onChange={v => upd(s => void (s.subs[i].price = v))} />
+                      <MoneyInput
+                        m={{ v: x.price, cur: x.cur ?? 'PLN' }}
+                        rates={R}
+                        live
+                        onChange={mo => upd(s => void Object.assign(s.subs[i], { price: mo.v, cur: mo.cur === 'PLN' ? undefined : mo.cur }))}
+                      />
+                      {x.partial && !x.paid && (x.paidAmt ?? 0) > 0 && (
+                        <div className="conv">
+                          оплачено {fmt(x.paidAmt ?? 0)} из {fmt(subPln(x, R))}
+                        </div>
+                      )}
                     </td>
                     <td>
-                      <input type="checkbox" className="chk" checked={x.paid} onChange={e => upd(s => void (s.subs[i].paid = e.target.checked))} />
+                      <input type="checkbox" className="chk" checked={x.paid} onChange={e =>
+                          upd(s => {
+                            s.subs[i].paid = e.target.checked
+                            // Сняли галочку — новый месяц, частичные оплаты обнуляются.
+                            if (!e.target.checked) s.subs[i].paidAmt = 0
+                          })
+                        }
+                      />
                     </td>
                     <td className="del">
                       <button className="x" aria-label="Удалить" onClick={() => confirm(`Удалить «${x.name}»?`) && upd(s => void s.subs.splice(i, 1))}>
@@ -252,7 +269,7 @@ export default function App() {
                 + подписка
               </button>
               <span>
-                Все подписки: <b>{fmt(state.subs.reduce((a, x) => a + x.price, 0))}</b> · осталось списать: <b>{fmt(m.subs)}</b>
+                Все подписки: <b>{fmt(state.subs.reduce((a, x) => a + subPln(x, R), 0))}</b> · осталось списать: <b>{fmt(m.subs)}</b>
               </span>
             </div>
           </div>

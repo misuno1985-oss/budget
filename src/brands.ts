@@ -20,6 +20,7 @@ const LIST: [RegExp, Brand][] = [
   [/revolut|револют/i, { key: 'revolut', src: B + 'revolut.svg' }],
   [/hetzner/i, { key: 'hetzner', src: B + 'hetzner.svg' }],
   [/\bpko\b|пко/i, { key: 'pko', src: B + 'pko.png' }],
+  [/цвет|flowers|stem\s*by\s*stem|kwiat/i, { key: 'flowers', src: B + 'stembystem.png' }],
   [/patreon|патреон/i, { key: 'patreon', src: B + 'patreon.svg', color: '#FF424D' }],
   [/buy\s*me\s*a?\s*coffee|buymeacoffee|кофе/i, { key: 'bmc', src: B + 'buymeacoffee.svg', color: '#FFDD00' }],
 ]
@@ -52,7 +53,7 @@ const MERCHANT: Record<string, { re: RegExp; strong: boolean }> = {
   canal: { re: /canal\s*\+|canalplus|canal plus/i, strong: true },
   polsat: { re: /polsat/i, strong: true },
   youtube: { re: /youtube/i, strong: true },
-  googleone: { re: /google\s*\*?\s*one|google\s*storage/i, strong: true },
+  googleone: { re: /google\s*\*?\s*one|google\s*storage|google\s+g1sk/i, strong: true },
   tmobile: { re: /t-?mobile/i, strong: true },
   openai: { re: /openai|chatgpt/i, strong: true },
   suno: { re: /\bsuno\b/i, strong: true },
@@ -61,6 +62,7 @@ const MERCHANT: Record<string, { re: RegExp; strong: boolean }> = {
   revolut: { re: /\bmetal\b|opłata za plan|plan fee/i, strong: false },
   hetzner: { re: /hetzner/i, strong: true },
   pko: { re: /opłata|prowizja/i, strong: false },
+  flowers: { re: /stembystem|stem by stem|flowers|kwiaciarn|kwiaty/i, strong: false },
 }
 
 /** Насколько уверенно текст списания относится к подписке с таким названием: 2 — точно, 1 — если сойдётся цена, 0 — нет. */

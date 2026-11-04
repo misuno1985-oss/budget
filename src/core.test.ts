@@ -260,3 +260,50 @@ describe('списание на подписку ставит галочку', (
     expect(s.subs.find(x => x.id === 'h')!.paid).toBe(false)
   })
 })
+
+describe('подписки частями и в евро', () => {
+  async function setup() {
+    const st = await import('./state')
+    const s = sample()
+    s.bankLinks = { pko: 'a', revolut: 'b' }
+    s.subs = [
+      { id: 'net', name: 'T-Mobile (интернет)', day: 10, price: 84.98, paid: false },
+      { id: 'tel', name: 'T-Mobile (телефоны)', day: 10, price: 105, paid: false, partial: true },
+      { id: 'gpt', name: 'ChatGPT', day: 20, price: 23, cur: 'EUR', paid: false },
+      { id: 'fl', name: 'Цветы', day: 18, price: 300, paid: false },
+    ]
+    return { st, s }
+  }
+  const c = (id: number, body: string) => ({ id, created_at: '2026-11-10T09:00:00Z', body })
+  const tm = (id: number, sum: string) => c(id, `PKO: -${sum} PLN Zakup przy użyciu karty T-MOBILE POLSKA`)
+  it('телефоны: 35 + 35 копятся, третьи 35 ставят галочку; интернет — по своей сумме', async () => {
+    const { st, s } = await setup()
+    let s2 = st.ingest(s, [tm(1, '35,00'), tm(2, '84,98'), tm(3, '35,00')], rates)
+    const tel = () => s2.subs.find(x => x.id === 'tel')!
+    expect(tel().paidAmt).toBe(70)
+    expect(tel().paid).toBe(false)
+    expect(s2.subs.find(x => x.id === 'net')!.paid).toBe(true)
+    const { month } = await import('./calc')
+    expect(month(s2, rates, today).subs).toBeCloseTo(35 + 23 * 4.5 + 300, 6) // остаток телефонов + ChatGPT в евро + цветы
+    s2 = st.ingest(s2, [tm(4, '35,00')], rates)
+    expect(tel().paid).toBe(true)
+    st.undoOp(s2, s2.ops.find(o => o.id === 4)!, rates)
+    expect(tel().paid).toBe(false)
+    expect(tel().paidAmt).toBe(70)
+    st.undoOp(s2, s2.ops.find(o => o.id === 1)!, rates)
+    expect(tel().paidAmt).toBe(35)
+  })
+  it('телефоны разом за 105 — сразу галочка', async () => {
+    const { st, s } = await setup()
+    const s2 = st.ingest(s, [tm(1, '105,00')], rates)
+    expect(s2.subs.find(x => x.id === 'tel')!.paid).toBe(true)
+    expect(s2.subs.find(x => x.id === 'net')!.paid).toBe(false)
+  })
+  it('ChatGPT в евро узнаётся по сумме в злотых; цветы — STEMBYSTEM около 300', async () => {
+    const { st, s } = await setup()
+    const s2 = st.ingest(s, [c(1, 'PKO: -94,10 PLN OPENAI *CHATGPT SUBSCR'), c(2, 'PKO: -155,00 PLN WWW.STEMBYSTEM.FLOWERS'), c(3, 'PKO: -295,00 PLN WWW.STEMBYSTEM.FLOWERS')], rates)
+    expect(s2.subs.find(x => x.id === 'gpt')!.paid).toBe(true)
+    expect(s2.ops.find(o => o.id === 2)!.subId).toBeUndefined()
+    expect(s2.ops.find(o => o.id === 3)!.subId).toBe('fl')
+  })
+})

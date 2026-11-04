@@ -1,5 +1,5 @@
 import { merchantHit, RENAMES } from './brands'
-import { toPln } from './calc'
+import { subRemaining, toPln } from './calc'
 import { parseNotification, splitComment } from './parse'
 import type { Op, Rates, State } from './types'
 
@@ -188,28 +188,41 @@ export function unmatch(s: State, id: number, rates: Rates) {
 }
 
 /**
- * Списание на подписку: ставит галочку «оплачено» у подписки, которую узнали в тексте.
- * Однозначное название (Hetzner, OpenAI…) засчитывается сразу; общее (APPLE.COM/BILL, «opłata») — только если сумма близка к цене.
+ * Списание на подписку ставит галочку «оплачено» у подписки, которую узнали в тексте.
+ * 1) сумма близка к остатку подписки — берём самую близкую;
+ * 2) подписка, которую платят частями (телефоны), и списание меньше остатка — засчитываем часть, галочка — когда оплачено всё;
+ * 3) однозначное название (Hetzner, OpenAI…) — засчитываем даже при другой сумме.
+ * Общие названия (APPLE.COM/BILL, «opłata», магазин цветов) — только по пункту 1.
  */
 export function markSub(s: State, op: Op, rates: Rates) {
   if (op.dir !== -1 || op.amount === null || op.subId) return
   const text = op.manual ? op.note || '' : op.text
   if (!text) return
   const pln = toPln({ v: op.amount, cur: op.cur }, rates)
-  const near = (price: number) => price > 0 && Math.abs(pln - price) <= Math.max(2, price * 0.25)
-  const found = s.subs
-    .filter(x => !x.paid)
-    .map(x => ({ x, hit: merchantHit(x.name, text) }))
-    .filter(({ x, hit }) => hit === 2 || (hit === 1 && near(x.price)))
-    .sort((a, b) => b.hit - a.hit || Math.abs(pln - a.x.price) - Math.abs(pln - b.x.price))[0]
-  if (!found) return
-  found.x.paid = true
-  op.subId = found.x.id
+  const near = (r: number) => r > 0 && Math.abs(pln - r) <= Math.max(2, r * 0.25)
+  const cands = s.subs.filter(x => !x.paid).map(x => ({ x, hit: merchantHit(x.name, text), rest: subRemaining(x, rates) }))
+  const hits = cands.filter(c => c.hit > 0)
+  const close = hits.filter(c => near(c.rest)).sort((a, b) => Math.abs(pln - a.rest) - Math.abs(pln - b.rest))[0]
+  const part = hits.find(c => c.x.partial && pln < c.rest - 0.01)
+  const strong = hits.find(c => c.hit === 2 && !c.x.partial)
+  if (close) {
+    close.x.paid = true
+    op.subId = close.x.id
+  } else if (part) {
+    part.x.paidAmt = Math.round(((part.x.paidAmt ?? 0) + pln) * 100) / 100
+    op.subId = part.x.id
+    op.subPart = pln
+  } else if (strong) {
+    strong.x.paid = true
+    op.subId = strong.x.id
+  }
 }
 
 /** Операцию отменили — снять галочку, которую она поставила. */
 function unmarkSub(s: State, op: Op) {
   const sub = s.subs.find(x => x.id === op.subId)
-  if (sub) sub.paid = false
+  if (sub && op.subPart !== undefined) sub.paidAmt = Math.max(0, Math.round(((sub.paidAmt ?? 0) - op.subPart) * 100) / 100)
+  else if (sub) sub.paid = false
   op.subId = undefined
+  op.subPart = undefined
 }

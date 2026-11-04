@@ -1,4 +1,4 @@
-import type { Money, Rates, Row, State } from './types'
+import type { Money, Rates, Row, State, Sub } from './types'
 
 export const DAY = 864e5
 
@@ -24,11 +24,14 @@ export function daysLeft(payday: string, today: Date): number {
   return Math.round((parseDate(payday).getTime() - startOfDay(today).getTime()) / DAY)
 }
 
-export const subsLeft = (s: State) => s.subs.reduce((a, x) => a + (x.paid ? 0 : x.price), 0)
+export const subPln = (x: Sub, rates: Rates) => toPln({ v: x.price, cur: x.cur ?? 'PLN' }, rates)
+/** Сколько по подписке ещё не списано: цена минус уже оплаченные части. */
+export const subRemaining = (x: Sub, rates: Rates) => (x.paid ? 0 : Math.max(0, subPln(x, rates) - (x.paidAmt ?? 0)))
+export const subsLeft = (s: State, rates: Rates) => s.subs.reduce((a, x) => a + subRemaining(x, rates), 0)
 
 export function month(s: State, rates: Rates, today: Date) {
   const income = sumRows(s.incomes, rates) + s.fromCapital
-  const subs = subsLeft(s)
+  const subs = subsLeft(s, rates)
   const expense = sumRows(s.expenses, rates) + subs + s.toCapital
   const rest = income - expense
   const days = daysLeft(s.payday, today)

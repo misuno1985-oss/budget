@@ -21,8 +21,13 @@ export interface Sub {
   id: string
   name: string
   day: number
+  /** Цена в валюте cur (по умолчанию злотые); в злотые пересчитывается по текущему курсу. */
   price: number
+  cur?: Cur
   paid: boolean
+  /** Можно платить частями (несколько телефонов одной строкой): сколько злотых уже списано в этом месяце. */
+  partial?: boolean
+  paidAmt?: number
 }
 
 export interface TaxColumn {
@@ -65,6 +70,8 @@ export interface Op {
   pln?: number
   /** Подписка, которую это списание отметило оплаченной. */
   subId?: string
+  /** Если подписку платят частями — сколько злотых этой операцией засчитано. */
+  subPart?: number
 }
 
 export interface PokerWin {
