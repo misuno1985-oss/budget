@@ -1,3 +1,4 @@
+import { book, keepsBalance, unbook } from './autobook'
 import { merchantHit, RENAMES } from './brands'
 import { subRemaining, toPln } from './calc'
 import { parseNotification, splitComment } from './parse'
@@ -90,6 +91,14 @@ export function ingest(prev: State, comments: Comment[], rates: Rates): State {
 /** Применить (или вручную подтвердить) операцию с направлением dir. Меняет s на месте. */
 export function applyOp(s: State, op: Op, dir: 1 | -1, rates: Rates) {
   if (op.amount === null) return
+  op.dir = dir
+  if (keepsBalance(s, op)) {
+    // Зарплата в евро: на злотой карте её ещё нет — только в налоги.
+    op.status = 'applied'
+    op.pln = 0
+    book(s, op)
+    return
+  }
   const row = linkedRow(s, op)
   if (op.balance !== undefined && row?.amt.cur === 'PLN') {
     op.pln = Math.round((op.balance - row.amt.v) * 100) / 100
@@ -97,6 +106,7 @@ export function applyOp(s: State, op: Op, dir: 1 | -1, rates: Rates) {
     op.dir = dir
     op.status = 'applied'
     markSub(s, op, rates)
+    book(s, op)
     return
   }
   const pln = dir * toPln({ v: op.amount, cur: op.cur }, rates)
@@ -105,6 +115,7 @@ export function applyOp(s: State, op: Op, dir: 1 | -1, rates: Rates) {
     op.status = 'applied'
     op.pln = pln
     markSub(s, op, rates)
+    book(s, op)
   }
 }
 
@@ -115,6 +126,7 @@ export function undoOp(s: State, op: Op, rates: Rates) {
   op.status = 'unknown'
   op.pln = undefined
   unmarkSub(s, op)
+  unbook(s, op)
 }
 
 const DAY_MS = 864e5
@@ -150,6 +162,7 @@ export function addManual(s: State, bank: Op['bank'], dir: 1 | -1, amount: numbe
     op.pln = pln
   }
   if (dir < 0) markSub(s, op, rates)
+  if (op.status === 'applied') book(s, op)
   s.ops.unshift(op)
   return op
 }
@@ -161,6 +174,7 @@ export function removeManual(s: State, id: number, rates: Rates) {
   const m = s.ops[i]
   if (m.status === 'applied' && m.pln !== undefined) moveLinked(s, m, -m.pln, rates)
   unmarkSub(s, m)
+  unbook(s, m)
   const twin = s.ops.find(o => o.id === m.matchedWith)
   if (twin) {
     twin.status = 'unknown'
@@ -183,6 +197,7 @@ export function unmatch(s: State, id: number, rates: Rates) {
     if (moveLinked(s, op, pln, rates)) {
       op.status = 'applied'
       op.pln = pln
+      book(s, op)
     }
   }
 }
@@ -225,4 +240,39 @@ function unmarkSub(s: State, op: Op) {
   else if (sub) sub.paid = false
   op.subId = undefined
   op.subPart = undefined
+}
+
+/**
+ * Дата следующего поступления. Если её передвинули в следующий календарный месяц (или дальше) — начался новый месяц:
+ * факт расходов обнуляется, галочки подписок снимаются (план остаётся). Прежнее запоминается, чтобы можно было вернуть.
+ */
+export function setPayday(s: State, date: string) {
+  const prev = s.payday
+  s.payday = date
+  // Сдвиг в пределах того же месяца (вперёд или назад на несколько дней) новым месяцем не считается.
+  const ym = (d: string) => Number(d.slice(0, 4)) * 12 + Number(d.slice(5, 7))
+  if (!prev || !date || ym(date) <= ym(prev)) return
+  s.lastCycle = {
+    at: new Date().toISOString(),
+    payday: prev,
+    facts: s.expenses.map(r => ({ id: r.id, v: r.amt.v })),
+    subs: s.subs.map(x => ({ id: x.id, paid: x.paid, paidAmt: x.paidAmt })),
+  }
+  s.expenses.forEach(r => (r.amt = { ...r.amt, v: 0 }))
+  s.subs.forEach(x => ((x.paid = false), (x.paidAmt = 0)))
+}
+
+export function undoNewCycle(s: State) {
+  const c = s.lastCycle
+  if (!c) return
+  s.payday = c.payday
+  for (const f of c.facts) {
+    const r = s.expenses.find(x => x.id === f.id)
+    if (r) r.amt = { ...r.amt, v: f.v }
+  }
+  for (const o of c.subs) {
+    const x = s.subs.find(y => y.id === o.id)
+    if (x) Object.assign(x, { paid: o.paid, paidAmt: o.paidAmt })
+  }
+  s.lastCycle = undefined
 }

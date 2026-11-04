@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { capital, itemPln, month, prepaidLeft, subPln, tax } from './calc'
 import { fetchComments, inboxNumber, loadData, loadSettings, saveData, saveSettings, type Settings } from './github'
 import { cachedRates, fetchRates, nbpRateBefore, type RatesInfo } from './rates'
+import { bookedLabel } from './autobook'
 import { brandsOf, KAS_LOGO } from './brands'
 import { Background } from './Background'
-import { addManual, applyOp, emptyState, findAutoTwin, ingest, migrate, removeManual, uid, undoOp, unmatch } from './state'
+import { addManual, applyOp, emptyState, findAutoTwin, ingest, migrate, removeManual, setPayday, uid, undoNewCycle, undoOp, unmatch } from './state'
 import type { Bank, Op, Rates, State, TaxItem } from './types'
 import { CUR_SIGN } from './types'
 import { fmt, Logos, MoneyInput, Num, Rows, Txt } from './ui'
@@ -140,6 +141,19 @@ export default function App() {
   const t = tax(state)
   const unknown = state.ops.filter(o => o.status === 'unknown').length
 
+  // Валютные доходы без курса (добавлены из уведомления) — подтянуть курс NBP за день до, чтобы налог считался сразу.
+  const fetching = useRef(new Set<string>())
+  useEffect(() => {
+    for (const col of state.tax.columns)
+      for (const it of col.items) {
+        if (!it.cur || it.cur === 'PLN' || it.rate || !it.date || fetching.current.has(it.id)) continue
+        fetching.current.add(it.id)
+        nbpRateBefore(it.cur, it.date).then(r => {
+          if (r) upd(s => s.tax.columns.forEach(c => c.items.forEach(x => x.id === it.id && Object.assign(x, { rate: r.rate, rateDay: r.day }))))
+        })
+      }
+  }, [state.tax.columns, upd])
+
   return (
     <div className="app">
       <Background tab={tab} />
@@ -165,7 +179,12 @@ export default function App() {
         </div>
         <div className="tile pay">
           <p>Деньги придут</p>
-          <input type="date" value={state.payday} onChange={e => upd(s => void (s.payday = e.target.value))} />
+          <input type="date" value={state.payday} onChange={e => upd(s => setPayday(s, e.target.value))} />
+          {state.lastCycle && Date.now() - Date.parse(state.lastCycle.at) < 864e5 && (
+            <button className="link" onClick={() => upd(undoNewCycle)} title="Вернуть факт расходов и галочки подписок как было">
+              новый месяц начат · вернуть
+            </button>
+          )}
         </div>
         <div className="tile">
           <p>Дней осталось</p>
@@ -391,6 +410,7 @@ export default function App() {
                   <tr key={p.id}>
                     <td>
                       <input type="date" value={p.date} onChange={e => upd(s => void (s.tax.payments[i].date = e.target.value))} />
+                      {p.auto && <span className="tag">авто</span>}
                     </td>
                     <td className="r">
                       <Num value={p.amount} onChange={v => upd(s => void (s.tax.payments[i].amount = v))} />
@@ -516,6 +536,7 @@ export default function App() {
                   <tr key={p.id}>
                     <td>
                       <input type="date" value={p.date} onChange={e => upd(s => void (s.rent[i].date = e.target.value))} />
+                      {p.auto && <span className="tag">авто</span>}
                     </td>
                     {(['chynsh', 'electr', 'rent'] as const).map(k => (
                       <td key={k} className="r">
@@ -578,6 +599,7 @@ export default function App() {
                     {o.manual && <span className="tag">вручную</span>} {o.manual ? o.note || '' : o.text}
                     {o.status === 'matched' && <div className="matchnote">Совпало с ручной записью — второй раз не учтено</div>}
                     {o.manual && o.matchedWith && <div className="matchnote">Подтверждено уведомлением банка</div>}
+                    {bookedLabel(state, o) && <div className="matchnote">{bookedLabel(state, o)}</div>}
                     {o.subId && <div className="matchnote">✓ Подписка «{state.subs.find(x => x.id === o.subId)?.name ?? '—'}» отмечена оплаченной</div>}
                   </td>
                   <td className="r nowrap">
@@ -660,6 +682,7 @@ function TaxItemRow({ it, rates, onChange, onDelete }: { it: TaxItem; rates: Rat
           ×
         </button>
       </div>
+      {it.auto && <div className="taxrate">авто, из уведомления банка</div>}
       {cur !== 'PLN' && (
         <div className="taxrate">
           {it.rate ? `курс NBP ${fmt(it.rate, 4)} (${(it.rateDay ?? '').split('-').reverse().join('.')}) = ${fmt(itemPln(it))} zł` : 'курс NBP загружается…'}

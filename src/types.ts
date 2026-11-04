@@ -39,6 +39,8 @@ export interface TaxItem {
   rate?: number
   /** Дата курса NBP (последний рабочий день перед поступлением). */
   rateDay?: string
+  /** Добавлено автоматически из этой операции. */
+  auto?: number
 }
 
 export interface TaxColumn {
@@ -55,6 +57,7 @@ export interface RentPayment {
   electr: number
   rent: number
   note: string
+  auto?: number
 }
 
 export type Bank = 'pko' | 'revolut'
@@ -83,6 +86,8 @@ export interface Op {
   subId?: string
   /** Если подписку платят частями — сколько злотых этой операцией засчитано. */
   subPart?: number
+  /** Куда операция автоматически разнесена (налоги, взносы, расходы). existed — такая запись уже была. */
+  booked?: { kind: 'income' | 'taxpay' | 'expense'; colId?: string; itemId?: string; rowId?: string; amount?: number; existed?: boolean }
 }
 
 export interface PokerWin {
@@ -105,13 +110,20 @@ export interface State {
   assets: Row[]
   liabilities: Row[]
   prepaid: { paidOn: string; until: string; amount: number }
-  tax: { year: number; columns: TaxColumn[]; payments: { id: string; date: string; amount: number }[] }
+  tax: { year: number; columns: TaxColumn[]; payments: { id: string; date: string; amount: number; auto?: number }[] }
   rent: RentPayment[]
   bankLinks: Record<Bank, string | null>
   ops: Op[]
   lastCommentId: number
   /** Выигрыши в покер — учёт без налога. */
   poker: PokerWin[]
+  /**
+   * Личные правила разнесения уведомлений (работодатели, свои получатели) — только в закрытых данных.
+   * match — регулярное выражение по тексту уведомления; skip — доход, который не идёт в налоги.
+   */
+  rules?: { kind: 'income' | 'skip' | 'taxpay' | 'expense'; match: string; column?: string; row?: string; rent?: 'chynsh' | 'electr'; keepBalance?: boolean }[]
+  /** Как было до начала нового месяца — чтобы можно было вернуть, если дату выбрали по ошибке. */
+  lastCycle?: { at: string; payday: string; facts: { id: string; v: number }[]; subs: { id: string; paid: boolean; paidAmt?: number }[] }
 }
 
 export type Rates = Record<Cur, number>

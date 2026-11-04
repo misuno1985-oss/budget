@@ -320,3 +320,91 @@ describe('доходы в валюте для налога', () => {
     expect(tax(s).due).toBe(300)
   })
 })
+
+describe('уведомления сами разносятся по вкладкам', () => {
+  async function setup() {
+    const st = await import('./state')
+    const s = sample()
+    s.bankLinks = { pko: 'a', revolut: 'b' }
+    s.tax.columns = [
+      { id: 'pt', name: 'Patreon', rate: 12, items: [] },
+      { id: 'zp', name: 'Зарплата', rate: 6, items: [] },
+      { id: 'bm', name: 'Buy Me a Coffee', rate: 12, items: [{ id: 'old', v: 300.5, date: '2026-10-23' }] },
+    ]
+    s.tax.payments = []
+    s.expenses = [{ id: 'ch', name: 'Чынш + электр', amt: { v: 0, cur: 'PLN' }, plan: 1500 }]
+    s.rent = []
+    // Личные правила в тесте — вымышленные.
+    s.rules = [
+      { kind: 'income', match: 'acme', column: 'зарплат', keepBalance: true },
+      { kind: 'skip', match: 'fundacja testowa' },
+      { kind: 'expense', match: 'energia sp', row: 'электр', rent: 'electr' },
+    ]
+    return { st, s }
+  }
+  const c = (id: number, at: string, body: string) => ({ id, created_at: at, body })
+  it('Patreon и Payoneer — в Patreon, Citibank — в Buy Me a Coffee, повтор не добавляется', async () => {
+    const { st, s } = await setup()
+    const s2 = st.ingest(s, [
+      c(1, '2026-11-05T10:00:00Z', 'revolut: Otrzymano 100,10 zł od PATREON, INC.'),
+      c(2, '2026-11-06T10:00:00Z', 'revolut: Otrzymano 200,20 zł od PAYONEER EUROPE'),
+      c(3, '2026-10-23T10:00:00Z', 'revolut: Otrzymano 300,50 zł od CITIBANK EUROPE'),
+    ], rates)
+    const col = (id: string) => s2.tax.columns.find(x => x.id === id)!
+    expect(col('pt').items.map(x => [x.date, x.v, x.auto])).toEqual([['2026-11-05', 100.1, 1], ['2026-11-06', 200.2, 2]])
+    expect(col('bm').items).toHaveLength(1)
+    expect(s2.ops.find(o => o.id === 3)!.booked?.existed).toBe(true)
+  })
+  it('личное правило: зарплата в евро — в налоги, остаток карты не меняется; «skip» — не в налоги', async () => {
+    const { st, s } = await setup()
+    const s2 = st.ingest(s, [
+      c(1, '2026-11-10T10:00:00Z', 'revolut: Otrzymano 1000,00 € od ACME OU'),
+      c(2, '2026-11-12T10:00:00Z', 'PKO: +5000,00 PLN Przelew na konto FUNDACJA TESTOWA'),
+    ], rates)
+    expect(s2.tax.columns.find(x => x.id === 'zp')!.items[0]).toMatchObject({ v: 1000, cur: 'EUR', date: '2026-11-10' })
+    expect(s2.incomes[1].amt.v).toBe(1000)
+    expect(s2.tax.columns.flatMap(x => x.items)).toHaveLength(2)
+    expect(s2.incomes[0].amt.v).toBe(150 + 5000)
+  })
+  it('налог на микрорахунок — во взносы; чынш — в факт и историю; личное правило для электричества; отмена всё убирает', async () => {
+    const { st, s } = await setup()
+    const s2 = st.ingest(s, [
+      c(1, '2026-11-10T10:00:00Z', 'PKO: -400,00 PLN Przelew do org. podatkowego URZĄD SKARBOWY'),
+      c(2, '2026-11-12T10:00:00Z', 'PKO: -900,00 PLN Przelew wychodzący WSPÓLNOTA MIESZKANIOWA TESTOWA 1'),
+      c(3, '2026-11-13T10:00:00Z', 'PKO: -100,00 PLN Przelew ENERGIA SP. Z O.O.'),
+    ], rates)
+    expect(s2.tax.payments).toEqual([expect.objectContaining({ date: '2026-11-10', amount: 400, auto: 1 })])
+    expect(s2.expenses[0].amt.v).toBe(1000)
+    expect(s2.rent.map(r => [r.chynsh, r.electr])).toEqual([[0, 100], [900, 0]])
+    for (const id of [3, 2, 1]) st.undoOp(s2, s2.ops.find(o => o.id === id)!, rates)
+    expect(s2.expenses[0].amt.v).toBe(0)
+    expect(s2.rent).toHaveLength(0)
+    expect(s2.tax.payments).toHaveLength(0)
+  })
+  it('ручная запись тоже разносится', async () => {
+    const { st, s } = await setup()
+    st.addManual(s, 'revolut', 1, 300, 'Patreon', rates, '2026-11-15T10:00:00Z')
+    expect(s.tax.columns[0].items[0]).toMatchObject({ v: 300, date: '2026-11-15' })
+  })
+})
+
+describe('новая дата поступления — новый месяц', () => {
+  it('следующий месяц — обнуляет факт и галочки; тот же месяц или назад — нет; можно вернуть', async () => {
+    const { setPayday, undoNewCycle } = await import('./state')
+    const s = sample()
+    s.expenses[0].amt.v = 500
+    s.subs[1].paid = true
+    setPayday(s, '2026-11-10')
+    setPayday(s, '2026-11-18')
+    setPayday(s, '2026-11-02')
+    expect(s.expenses[0].amt.v).toBe(500)
+    setPayday(s, '2026-12-13')
+    expect(s.expenses[0].amt.v).toBe(0)
+    expect(s.subs.every(x => !x.paid)).toBe(true)
+    expect(s.expenses[0].plan).toBe(500)
+    undoNewCycle(s)
+    expect(s.payday).toBe('2026-11-02')
+    expect(s.expenses[0].amt.v).toBe(500)
+    expect(s.subs[1].paid).toBe(true)
+  })
+})

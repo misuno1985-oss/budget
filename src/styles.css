@@ -130,6 +130,7 @@ input.chk:checked::after { content: ''; width: 11px; height: 6px; border-left: 3
 .matchnote { font-size: 11px; color: var(--pos); margin-top: 2px; }
 .ops tr.matched { opacity: 0.75; }
 .ops tr.matched td { background: rgba(47, 122, 28, 0.06); }
+button.link { border: none; background: none; padding: 0; margin-top: 3px; font: inherit; font-size: 11px; color: var(--warn); text-decoration: underline; cursor: pointer; }
 code { font-size: 12px; background: #eef0f3; padding: 1px 4px; border-radius: 4px; word-break: break-all; }
 footer { margin-top: 16px; color: rgba(255, 255, 255, 0.85); }
 
