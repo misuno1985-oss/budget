@@ -1,0 +1,15 @@
+{
+  "name": "Бюджет",
+  "short_name": "Бюджет",
+  "start_url": "/budget/",
+  "scope": "/budget/",
+  "display": "standalone",
+  "background_color": "#2a0d1b",
+  "theme_color": "#2a0d1b",
+  "lang": "ru",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
