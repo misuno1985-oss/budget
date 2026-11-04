@@ -80,8 +80,9 @@ function syncAccount(s: State, bank: Bank, acc: BankAccount, since: string, rate
 export function reconcile(prev: State, feed: BankFeed, rates: Rates): State {
   if (!feed?.fetchedAt || prev.bankSync?.fetchedAt === feed.fetchedAt) return prev
   const s: State = structuredClone(prev)
-  // Первая выписка: прошлое уже учтено вручную, добавляем только операции с сегодняшнего дня.
-  const since = s.bankSync?.since ?? feed.fetchedAt.slice(0, 10)
+  // Первая выписка: прошлое уже учтено вручную. Карты PKO проводятся через 1–3 дня с датой проведения,
+  // поэтому операции без уведомления добавляем только через 3 дня после подключения — остатки выравниваются сразу.
+  const since = s.bankSync?.since ?? new Date(Date.parse(feed.fetchedAt.slice(0, 10)) + 3 * DAY).toISOString().slice(0, 10)
   const seq = { n: 0 }
   for (const bank of ['pko', 'revolut'] as Bank[]) {
     const acc = mainAccount(feed, bank)
