@@ -110,3 +110,19 @@ export async function loadBank(st: Settings): Promise<BankFeed | null> {
     throw e
   }
 }
+
+/**
+ * Попросить GitHub забрать выписку прямо сейчас. Передаём адрес и браузер владельца — банк видит,
+ * что запрос сделан при нём, и не считает его в суточный лимит фоновых. Нужен доступ ключа «Actions: Read and write».
+ */
+export async function triggerBank(st: Settings): Promise<void> {
+  let ip = ''
+  try {
+    const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' })
+    ip = (await r.json()).ip ?? ''
+  } catch {}
+  await api(st, '/actions/workflows/bank.yml/dispatches', {
+    method: 'POST',
+    body: JSON.stringify({ ref: 'main', inputs: ip ? { psu_ip: ip, psu_ua: navigator.userAgent.slice(0, 250) } : {} }),
+  })
+}

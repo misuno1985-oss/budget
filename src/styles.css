@@ -19,7 +19,7 @@
 body { margin: 0; color: var(--text); font: 15px/1.5 'Inter Tight', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #2a0d1b; min-height: 100vh; }
 .bg { position: fixed; inset: 0; z-index: -1; transition: background-color 0.3s; }
 .bg svg { width: 100%; height: 100%; display: block; }
-.app { max-width: 1100px; margin: 0 auto; padding: 14px 16px 44px; }
+.app { max-width: 1100px; margin: 0 auto; padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(44px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
 
 header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 nav { display: flex; gap: 4px; flex-wrap: wrap; }
@@ -123,6 +123,10 @@ input.chk:checked::after { content: ''; width: 11px; height: 6px; border-left: 3
 .bankline { margin: 2px 0 10px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
 .bankline .warn { flex-basis: 100%; }
 .dtext { overflow-wrap: anywhere; }
+.card.slim { padding-top: 10px; padding-bottom: 4px; margin-bottom: 14px; }
+.spin { display: inline-block; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.bankline button.add:disabled { opacity: 0.8; cursor: default; }
 .kpi.inner { grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 10px 0 14px; }
 .ops .optext { font-size: 12px; }
 .ops tr.ignored { opacity: 0.5; }

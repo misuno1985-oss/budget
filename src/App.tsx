@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { capital, itemPln, month, prepaidLeft, subPln, tax } from './calc'
-import { fetchComments, inboxNumber, loadBank, loadData, loadSettings, saveData, saveSettings, type Settings } from './github'
+import { fetchComments, inboxNumber, loadBank, loadData, triggerBank, loadSettings, saveData, saveSettings, type Settings } from './github'
 import { cachedRates, fetchRates, nbpRateBefore, type RatesInfo } from './rates'
 import { bookedLabel } from './autobook'
 import { brandsOf, KAS_LOGO } from './brands'
@@ -44,6 +44,7 @@ export default function App() {
   const [status, setStatus] = useState('')
   const [today, setToday] = useState(() => new Date())
   const [feed, setFeed] = useState<BankFeed | null>(cachedFeed)
+  const [refreshing, setRefreshing] = useState('')
   const sha = useRef<string | null>(null)
   const ready = useRef(false)
   const inbox = useRef<number | null>(null)
@@ -69,17 +70,59 @@ export default function App() {
     }
     try {
       const f = await loadBank(settings)
-      if (f) {
-        setFeed(f)
-        try {
-          localStorage.setItem(BKEY, JSON.stringify(f))
-        } catch {}
-        setState(prev => reconcile(prev, f, rates.rates))
-      }
+      if (f) applyFeed(f)
+      return f
     } catch {
       setStatus('Не удалось прочитать выписку банка')
+      return null
     }
-  }, [settings, rates])
+  }, [settings, rates]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function applyFeed(f: BankFeed) {
+    setFeed(f)
+    try {
+      localStorage.setItem(BKEY, JSON.stringify(f))
+    } catch {}
+    setState(prev => reconcile(prev, f, rates.rates))
+  }
+
+  /** Забрать выписку прямо сейчас: GitHub запускает сбор, ждём новый bank.json (обычно 30–60 с). */
+  const refreshBank = useCallback(
+    async (auto = false) => {
+      if (!settings.token || refreshingRef.current) return
+      refreshingRef.current = true
+      try {
+        localStorage.setItem('budget.bankAsked', String(Date.now()))
+      } catch {}
+      const before = feedRef.current?.fetchedAt ?? ''
+      setRefreshing(auto ? 'Обновляю выписку банка…' : 'Запрашиваю банк…')
+      try {
+        await triggerBank(settings)
+        setRefreshing('Банк отвечает… обычно до минуты')
+        for (let i = 0; i < 30; i++) {
+          await new Promise(r => setTimeout(r, 8000))
+          const f = await loadBank(settings).catch(() => null)
+          if (f && f.fetchedAt !== before) {
+            applyFeed(f)
+            setRefreshing('')
+            setStatus(`Выписка обновлена ${new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`)
+            return
+          }
+        }
+        setRefreshing('')
+        setStatus('Банк не ответил за 4 минуты — попробуйте позже')
+      } catch (e: any) {
+        setRefreshing('')
+        setStatus(e.status === 403 || e.status === 404 ? 'Ключу GitHub не хватает разрешения Actions — см. Настройки' : 'Не удалось запросить банк')
+      } finally {
+        refreshingRef.current = false
+      }
+    },
+    [settings, rates], // eslint-disable-line react-hooks/exhaustive-deps
+  )
+  const refreshingRef = useRef(false)
+  const feedRef = useRef(feed)
+  feedRef.current = feed
 
   // Старт: курсы, данные из закрытого репозитория, новые уведомления.
   useEffect(() => {
@@ -107,7 +150,15 @@ export default function App() {
           setState(m)
         } else setState(prev => ({ ...prev }))
         setStatus(s ? 'Загружено' : 'Новый файл данных')
-        return pullOps()
+        return pullOps().then(f => {
+          // Выписка старше часа — при открытии программы обновить (не чаще раза в 30 минут).
+          let asked = 0
+          try {
+            asked = Number(localStorage.getItem('budget.bankAsked') || 0)
+          } catch {}
+          const old = !f || Date.now() - Date.parse(f.fetchedAt) > 36e5
+          if (old && Date.now() - asked > 18e5) refreshBank(true)
+        })
       })
       .catch(e => setStatus(e.status === 401 ? 'Ключ GitHub не подходит' : e.status === 404 ? 'Репозиторий не найден' : 'Нет связи с GitHub'))
   }, [settings.token, settings.repo]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -228,6 +279,12 @@ export default function App() {
           <b className={m.perDay === null ? '' : m.perDay < 0 ? 'neg' : 'pos'}>{m.perDay === null ? 'выберите дату' : `${fmt(m.perDay)} zł`}</b>
         </div>
       </section>
+
+      {tab === 'Месяц' && settings.token && (
+        <div className="card slim">
+          <BankLine feed={feed} refreshing={refreshing} onRefresh={() => refreshBank()} canRefresh />
+        </div>
+      )}
 
       {tab === 'Месяц' && (
         <div className="grid">
@@ -615,7 +672,7 @@ export default function App() {
               </p>
             ),
           )}
-          <BankLine feed={feed} />
+          <BankLine feed={feed} refreshing={refreshing} onRefresh={() => refreshBank()} canRefresh={!!settings.token} />
           <ManualForm state={state} upd={upd} rates={R} />
           {state.ops.length === 0 && <p className="muted">Пока ничего не пришло.</p>}
           <table className="rows ops">
@@ -883,11 +940,22 @@ function SettingsTab({
 }
 
 /** Когда банк последний раз отдал выписку и что пошло не так. */
-function BankLine({ feed }: { feed: BankFeed | null }) {
-  if (!feed) return <p className="muted small">Выписка банка ещё не получена — GitHub собирает её три раза в день.</p>
+function BankLine({ feed, refreshing, onRefresh, canRefresh }: { feed: BankFeed | null; refreshing: string; onRefresh: () => void; canRefresh: boolean }) {
+  const button = canRefresh && (
+    <button className="add" disabled={!!refreshing} onClick={onRefresh}>
+      {refreshing ? <span className="spin">⟳</span> : '⟳'} {refreshing || 'Обновить из банка'}
+    </button>
+  )
+  if (!feed)
+    return (
+      <div className="bankline small">
+        <span className="muted">Выписка банка ещё не получена.</span> {button}
+      </div>
+    )
   const accs = (['pko', 'revolut'] as Bank[]).map(b => mainAccount(feed, b)).filter(Boolean)
   return (
     <div className="bankline small">
+      {button}
       <span className="muted">Выписка банка от {ruDate(feed.fetchedAt)}:</span>{' '}
       {accs.map(a => (
         <span key={a!.uid} className="nowrap">
