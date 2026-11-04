@@ -107,12 +107,18 @@ const CITY = /^(warszawa|krakow|kraków|gdansk|gdańsk|wroclaw|wrocław|poznan|p
 
 /** Читаемое описание операции из выписки: без служебных кодов банка, длинных номеров и склеенного города. */
 export function txLabel(text: string): string {
-  const parts = text
-    .split(' · ')
+  const raw = text.split(' · ')
+  // Банкомат: номер устройства ничего не говорит — только что произошло.
+  const atm = raw.find(p => /ATM/i.test(p) && CODES.some(([re]) => re.test(p)))
+  if (atm) return CODES.find(([re]) => re.test(atm))![1]
+  const parts = raw
     .map(p => {
       for (const [re, name] of CODES) if (re.test(p)) return name
       if (/^\d{10,}$/.test(p.trim())) return ''
-      return p.replace(CITY, '').replace(/(?<=[\w.)])([A-Z]{2})$/, '').replace(/\s{2,}/g, ' ').trim()
+      // Карта: «ГородМАГАЗИН 12PL» — город приклеен спереди, код страны сзади.
+      const noCity = p.replace(CITY, '')
+      const country = noCity !== p ? /([A-Z]{2})$/ : /(?<=\d)([A-Z]{2})$/
+      return noCity.replace(country, '').replace(/\s{2,}/g, ' ').trim()
     })
     .filter(Boolean)
   return [...new Set(parts)].join(' · ') || '—'
