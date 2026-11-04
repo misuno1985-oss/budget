@@ -80,3 +80,30 @@ export function capital(s: State, rates: Rates, today: Date) {
   const prepaid = prepaidLeft(s.prepaid, today)
   return { assets, debts, taxLeft, onHand, prepaid, total: onHand + prepaid }
 }
+
+const daysIn = (y: number, m: number) => new Date(y, m + 1, 0).getDate()
+const onDay = (y: number, m: number, day: number) => new Date(y, m, Math.min(Math.max(1, day), daysIn(y, m)))
+
+/** Начало текущего месяца бюджета: прошлая дата поступления (или за месяц до следующей). */
+export function cycleStart(s: State, today: Date): Date {
+  if (s.lastCycle?.payday) return parseDate(s.lastCycle.payday)
+  if (s.payday) {
+    const p = parseDate(s.payday)
+    return onDay(p.getFullYear(), p.getMonth() - 1, p.getDate())
+  }
+  return new Date(today.getFullYear(), today.getMonth(), 1)
+}
+
+/**
+ * Следующее списание подписки: первый её день начиная с начала месяца бюджета;
+ * уже оплачена — тот же день месяцем позже. Не оплачена, а день прошёл — просрочка.
+ */
+export function nextDue(x: Sub, s: State, today: Date): { date: Date; overdue: boolean } {
+  const st = cycleStart(s, today)
+  let d = onDay(st.getFullYear(), st.getMonth(), x.day)
+  if (d < st) d = onDay(st.getFullYear(), st.getMonth() + 1, x.day)
+  if (x.paid) d = onDay(d.getFullYear(), d.getMonth() + 1, x.day)
+  return { date: d, overdue: !x.paid && d < startOfDay(today) }
+}
+
+export const dm = (d: Date) => `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, '0')}`

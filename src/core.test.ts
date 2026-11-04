@@ -496,3 +496,36 @@ describe('описание операции из выписки', () => {
     expect(txLabel('Kawiarnia Test')).toBe('Kawiarnia Test')
   })
 })
+
+describe('дата следующего списания подписки', () => {
+  const st = () => {
+    const s = sample()
+    s.payday = '2026-11-10'
+    return s
+  }
+  it('не оплачена — в этом месяце бюджета, оплачена — месяцем позже', async () => {
+    const { nextDue, dm } = await import('./calc')
+    const s = st()
+    const t = new Date(2026, 10, 4)
+    expect(dm(nextDue({ id: 'a', name: 'A', day: 8, price: 1, paid: false }, s, t).date)).toBe('8.11')
+    expect(dm(nextDue({ id: 'a', name: 'A', day: 3, price: 1, paid: true }, s, t).date)).toBe('3.12')
+    expect(dm(nextDue({ id: 'a', name: 'A', day: 19, price: 1, paid: true }, s, t).date)).toBe('19.11')
+    expect(dm(nextDue({ id: 'a', name: 'A', day: 31, price: 1, paid: true }, s, t).date)).toBe('30.11')
+  })
+  it('день прошёл, а списания нет — просрочка', async () => {
+    const { nextDue } = await import('./calc')
+    const s = st()
+    expect(nextDue({ id: 'a', name: 'A', day: 3, price: 1, paid: false }, s, new Date(2026, 10, 4)).overdue).toBe(true)
+    expect(nextDue({ id: 'a', name: 'A', day: 8, price: 1, paid: false }, s, new Date(2026, 10, 4)).overdue).toBe(false)
+  })
+  it('списали на день раньше — подписка переезжает на этот день; отмена возвращает', async () => {
+    const { ingest, undoOp } = await import('./state')
+    let s = sample()
+    s.bankLinks = { pko: 'a', revolut: 'b' }
+    s.subs[0].day = 5
+    s = ingest(s, [{ id: 9, created_at: '2026-11-04T10:00:00Z', body: 'revolut: 4 lis 2026 o 11:00 - Zapłacono 50,00 zł w HETZNER' }], rates)
+    expect(s.subs[0]).toMatchObject({ paid: true, day: 4 })
+    undoOp(s, s.ops[0], rates)
+    expect(s.subs[0]).toMatchObject({ paid: false, day: 5 })
+  })
+})

@@ -2,7 +2,7 @@ import { book, keepsBalance, unbook } from './autobook'
 import { merchantHit, RENAMES } from './brands'
 import { subRemaining, toPln } from './calc'
 import { parseNotification, splitComment } from './parse'
-import type { Op, Rates, State } from './types'
+import type { Op, Rates, State, Sub } from './types'
 
 export const uid = () => Math.random().toString(36).slice(2, 10)
 
@@ -223,6 +223,7 @@ export function markSub(s: State, op: Op, rates: Rates) {
   if (close) {
     close.x.paid = true
     op.subId = close.x.id
+    shiftDay(close.x, op)
   } else if (part) {
     part.x.paidAmt = Math.round(((part.x.paidAmt ?? 0) + pln) * 100) / 100
     op.subId = part.x.id
@@ -230,7 +231,24 @@ export function markSub(s: State, op: Op, rates: Rates) {
   } else if (strong) {
     strong.x.paid = true
     op.subId = strong.x.id
+    shiftDay(strong.x, op)
   }
+}
+
+/**
+ * Сервис списал на день-другой раньше или позже — подписка переезжает на фактический день.
+ * Не сдвигаем по выписке PKO (там дата проведения, а не покупки), по ручным записям и если разница больше 5 дней.
+ */
+function shiftDay(x: Sub, op: Op) {
+  if (op.manual || (op.fromBank && op.bank === 'pko')) return
+  const d = new Date(op.at)
+  const day = d.getDate()
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+  if (day === x.day || (x.day > last && day === last)) return
+  const diff = Math.min(Math.abs(day - x.day), 31 - Math.abs(day - x.day))
+  if (diff > 5) return
+  op.subDayWas = x.day
+  x.day = day
 }
 
 /** Операцию отменили — снять галочку, которую она поставила. */
@@ -238,6 +256,8 @@ function unmarkSub(s: State, op: Op) {
   const sub = s.subs.find(x => x.id === op.subId)
   if (sub && op.subPart !== undefined) sub.paidAmt = Math.max(0, Math.round(((sub.paidAmt ?? 0) - op.subPart) * 100) / 100)
   else if (sub) sub.paid = false
+  if (sub && op.subDayWas !== undefined) sub.day = op.subDayWas
+  op.subDayWas = undefined
   op.subId = undefined
   op.subPart = undefined
 }

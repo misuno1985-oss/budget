@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { capital, itemPln, month, prepaidLeft, subPln, tax } from './calc'
+import { capital, dm, itemPln, month, nextDue, parseDate, prepaidLeft, subPln, tax } from './calc'
 import { fetchComments, inboxNumber, loadBank, loadData, triggerBank, loadSettings, saveData, saveSettings, type Settings } from './github'
 import { cachedRates, fetchRates, nbpRateBefore, type RatesInfo } from './rates'
 import { bookedLabel } from './autobook'
@@ -208,6 +208,7 @@ export default function App() {
     try {
       localStorage.setItem('budget.tab', tab)
     } catch {}
+    document.querySelector('nav .tab.on')?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' })
   }, [tab])
 
   const R = rates.rates
@@ -263,7 +264,10 @@ export default function App() {
         </div>
         <div className="tile pay">
           <p>Деньги придут</p>
-          <input type="date" value={state.payday} onChange={e => upd(s => setPayday(s, e.target.value))} />
+          <label className="datebtn">
+            {state.payday ? parseDate(state.payday).toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' }) : 'выбрать дату'}
+            <input type="date" value={state.payday} onChange={e => upd(s => setPayday(s, e.target.value))} />
+          </label>
           {state.lastCycle && Date.now() - Date.parse(state.lastCycle.at) < 864e5 && (
             <button className="link" onClick={() => upd(undoNewCycle)} title="Вернуть факт расходов и галочки подписок как было">
               новый месяц начат · вернуть
@@ -319,11 +323,13 @@ export default function App() {
           </div>
           <div className="card wide">
             <h3>Подписки</h3>
-            <table className="rows subs">
+            <SubsList state={state} upd={upd} rates={R} today={today} />
+            <table className="rows subs desk">
               <thead>
                 <tr>
                   <th>Сервис</th>
                   <th>День</th>
+                  <th>Следующий</th>
                   <th className="r">Цена, zł</th>
                   <th>Оплачено</th>
                   <th />
@@ -340,6 +346,9 @@ export default function App() {
                     </td>
                     <td>
                       <Num width={44} money={false} value={x.day} onChange={v => upd(s => void (s.subs[i].day = v))} />
+                    </td>
+                    <td className="nowrap">
+                      <DueLabel x={x} state={state} today={today} />
                     </td>
                     <td className="r">
                       <MoneyInput
@@ -610,7 +619,12 @@ export default function App() {
           </div>
           <div className="card wide">
             <h3>История оплат</h3>
-            <table className="rows rent">
+            <div className="mob">
+              {state.rent.map((p, i) => (
+                <RentCard key={p.id} p={p} i={i} upd={upd} />
+              ))}
+            </div>
+            <table className="rows rent desk">
               <thead>
                 <tr>
                   <th>Дата</th>
@@ -1026,6 +1040,125 @@ function DaughterTab({ feed }: { feed: BankFeed | null }) {
           </tbody>
         </table>
       </div>
+    </div>
+  )
+}
+
+/** Дата следующего списания подписки: «7.11»; не списано в срок — красным. */
+function DueLabel({ x, state, today }: { x: State['subs'][number]; state: State; today: Date }) {
+  const d = nextDue(x, state, today)
+  return d.overdue ? <span className="overdue">{dm(d.date)} — не списано</span> : <span className="muted">{dm(d.date)}</span>
+}
+
+/** Подписки на телефоне: полное название, под ним дата следующего списания и цена; нажатие — правка. */
+function SubsList({ state, upd, rates, today }: { state: State; upd: (f: (s: State) => void) => void; rates: Rates; today: Date }) {
+  const [open, setOpen] = useState<string | null>(null)
+  return (
+    <div className="mob sublist">
+      {state.subs.map((x, i) => {
+        const pln = subPln(x, rates)
+        return (
+          <div key={x.id} className={'subrow' + (x.paid ? ' paid' : '')}>
+            <div className="subhead" onClick={() => setOpen(open === x.id ? null : x.id)}>
+              <Logos name={x.name} />
+              <div className="subtxt">
+                <div className="subname">{x.name || 'Без названия'}</div>
+                <div className="submeta">
+                  <DueLabel x={x} state={state} today={today} /> · {fmt(x.price)} {CUR_SIGN[x.cur ?? 'PLN']}
+                  {x.cur && x.cur !== 'PLN' && <> ≈ {fmt(pln)} zł</>}
+                  {x.partial && !x.paid && (x.paidAmt ?? 0) > 0 && <> · оплачено {fmt(x.paidAmt ?? 0)}</>}
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                className="chk"
+                checked={x.paid}
+                onClick={e => e.stopPropagation()}
+                onChange={e =>
+                  upd(s => {
+                    s.subs[i].paid = e.target.checked
+                    if (!e.target.checked) s.subs[i].paidAmt = 0
+                  })
+                }
+              />
+            </div>
+            {open === x.id && (
+              <div className="subedit">
+                <label>
+                  <span>Название</span>
+                  <Txt value={x.name} placeholder="Сервис" onChange={v => upd(s => void (s.subs[i].name = v))} />
+                </label>
+                <label>
+                  <span>День списания</span>
+                  <Num width={56} money={false} value={x.day} onChange={v => upd(s => void (s.subs[i].day = v))} />
+                </label>
+                <label>
+                  <span>Цена</span>
+                  <MoneyInput
+                    m={{ v: x.price, cur: x.cur ?? 'PLN' }}
+                    rates={rates}
+                    live
+                    onChange={mo => upd(s => void Object.assign(s.subs[i], { price: mo.v, cur: mo.cur === 'PLN' ? undefined : mo.cur }))}
+                  />
+                </label>
+                <button className="add danger" onClick={() => confirm(`Удалить «${x.name}»?`) && upd(s => void s.subs.splice(i, 1))}>
+                  Удалить подписку
+                </button>
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+const RENT_PARTS = [
+  ['chynsh', 'чынш'],
+  ['electr', 'свет'],
+  ['rent', 'наём'],
+] as const
+
+/** Оплата квартиры на телефоне: дата и сумма, ниже — только непустые части; нажатие — правка. */
+function RentCard({ p, i, upd }: { p: State['rent'][number]; i: number; upd: (f: (s: State) => void) => void }) {
+  const [open, setOpen] = useState(false)
+  const total = p.chynsh + p.electr + p.rent
+  return (
+    <div className="rentcard">
+      <div className="renthead" onClick={() => setOpen(!open)}>
+        <b>{p.date ? parseDate(p.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }).replace(/\s*г\.$/, '') : 'без даты'}</b>
+        {p.auto && <span className="tag">авто</span>}
+        <b className="renttotal">{fmt(total)}</b>
+      </div>
+      <div className="chips" onClick={() => setOpen(!open)}>
+        {RENT_PARTS.filter(([k]) => p[k]).map(([k, label]) => (
+          <span key={k} className="chip">
+            {label} {fmt(p[k], 0)}
+          </span>
+        ))}
+        {p.note && <span className="chip">{p.note}</span>}
+      </div>
+      {open && (
+        <div className="subedit">
+          <label>
+            <span>Дата</span>
+            <input type="date" value={p.date} onChange={e => upd(s => void (s.rent[i].date = e.target.value))} />
+          </label>
+          {RENT_PARTS.map(([k, label]) => (
+            <label key={k}>
+              <span>{label[0].toUpperCase() + label.slice(1)}</span>
+              <Num width={90} value={p[k]} onChange={v => upd(s => void (s.rent[i][k] = v))} />
+            </label>
+          ))}
+          <label>
+            <span>Заметка</span>
+            <Txt value={p.note} onChange={v => upd(s => void (s.rent[i].note = v))} />
+          </label>
+          <button className="add danger" onClick={() => confirm('Удалить запись?') && upd(s => void s.rent.splice(i, 1))}>
+            Удалить запись
+          </button>
+        </div>
+      )}
     </div>
   )
 }
