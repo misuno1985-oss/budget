@@ -5,7 +5,7 @@ import { cachedRates, fetchRates, nbpRateBefore, type RatesInfo } from './rates'
 import { bookedLabel } from './autobook'
 import { brandsOf, KAS_LOGO } from './brands'
 import { Background } from './Background'
-import { mainAccount, reconcile, sessionDaysLeft } from './bank'
+import { mainAccount, reconcile, sessionDaysLeft, txLabel } from './bank'
 import { addManual, applyOp, emptyState, findAutoTwin, ingest, migrate, removeManual, setPayday, uid, undoNewCycle, undoOp, unmatch } from './state'
 import type { Bank, BankFeed, Op, Rates, State, TaxItem } from './types'
 import { CUR_SIGN } from './types'
@@ -632,7 +632,7 @@ export default function App() {
                   <td className="optext">
                     {o.manual && <span className="tag">вручную</span>}
                     {o.fromBank && <span className="tag bank">из банка</span>}
-                    {o.bankPending && <span className="tag">в обработке</span>} {o.manual ? o.note || '' : o.text}
+                    {o.bankPending && <span className="tag">в обработке</span>} {o.manual ? o.note || '' : o.fromBank ? txLabel(o.text) : o.text}
                     {o.status === 'matched' &&
                       (state.ops.find(x => x.id === o.matchedWith)?.fromBank ? (
                         <div className="matchnote">Уже учтено по выписке банка — второй раз не учтено</div>
@@ -947,7 +947,7 @@ function DaughterTab({ feed }: { feed: BankFeed | null }) {
               <tr key={t.id}>
                 <td className="muted nowrap">{ruDay(t.date)}</td>
                 <td className="dtext">
-                  {t.pending && <span className="tag">в обработке</span>} {t.text || '—'}
+                  {t.pending && <span className="tag">в обработке</span>} {txLabel(t.text)}
                 </td>
                 <td className={'r nowrap ' + (t.dir > 0 ? 'pos' : '')}>
                   {t.dir > 0 ? '+' : '−'}

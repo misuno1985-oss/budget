@@ -92,3 +92,28 @@ export function reconcile(prev: State, feed: BankFeed, rates: Rates): State {
   s.bankSync = { since, fetchedAt: feed.fetchedAt }
   return s
 }
+
+const CODES: [RegExp, string][] = [
+  [/MOBILE-PAYMENT-POS-NO-CARD[\w-]*/i, 'BLIK в магазине'],
+  [/MOBILE-PAYMENT-POS[\w-]*/i, 'оплата телефоном'],
+  [/MOBILE-PAYMENT-P2P[\w-]*|PHONE-TRANSFER[\w-]*/i, 'перевод на телефон'],
+  [/CASH-IN-ATM/i, 'внесение наличных'],
+  [/CASH-OUT-ATM|ATM-WITHDRAWAL/i, 'снятие в банкомате'],
+  [/TRANSFER-IN/i, 'перевод'],
+  [/TRANSFER-OUT/i, 'перевод'],
+  [/CARD-PAYMENT/i, ''],
+]
+const CITY = /^(warszawa|krakow|kraków|gdansk|gdańsk|wroclaw|wrocław|poznan|poznań|lodz|łódź|vilnius|london|dublin|berlin|amsterdam)(?=[A-ZĄĆĘŁŃÓŚŹŻ])/i
+
+/** Читаемое описание операции из выписки: без служебных кодов банка, длинных номеров и склеенного города. */
+export function txLabel(text: string): string {
+  const parts = text
+    .split(' · ')
+    .map(p => {
+      for (const [re, name] of CODES) if (re.test(p)) return name
+      if (/^\d{10,}$/.test(p.trim())) return ''
+      return p.replace(CITY, '').replace(/(?<=[\w.)])([A-Z]{2})$/, '').replace(/\s{2,}/g, ' ').trim()
+    })
+    .filter(Boolean)
+  return [...new Set(parts)].join(' · ') || '—'
+}

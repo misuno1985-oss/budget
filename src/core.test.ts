@@ -484,3 +484,14 @@ describe('сверка с выпиской банка', () => {
     expect(s2.subs.find(x => x.id === 's1')!.paid).toBe(true)
   })
 })
+
+describe('описание операции из выписки', () => {
+  it('без служебных кодов и склеенного города', async () => {
+    const { txLabel } = await import('./bank')
+    expect(txLabel('WarszawaSKLEP ZIELONY 7PL')).toBe('SKLEP ZIELONY 7')
+    expect(txLabel('00000012345678901 · MOBILE-PAYMENT-POS-NO-CARD-TX-CODE')).toBe('BLIK в магазине')
+    expect(txLabel('Jan Testowy · P · TRANSFER-IN')).toBe('Jan Testowy · P · перевод')
+    expect(txLabel('BANK ATM 01 · CASH-IN-ATM')).toBe('BANK ATM 01 · внесение наличных')
+    expect(txLabel('Kawiarnia Test')).toBe('Kawiarnia Test')
+  })
+})
