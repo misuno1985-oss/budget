@@ -33,7 +33,9 @@ function findOp(s: State, bank: Bank, tx: BankTx, liveIds: Set<string>): Op | un
 
 function syncAccount(s: State, bank: Bank, acc: BankAccount, since: string, rates: Rates, seq: { n: number }) {
   const live = new Set(acc.tx.map(t => t.id))
-  const txs = acc.tx.filter(t => t.cur === 'PLN' && t.date.slice(0, 10) >= since).sort((a, b) => a.date.localeCompare(b.date))
+  // Все операции выписки по порядку: более ранние сначала находят «свои» уведомления и ручные записи,
+  // чтобы следующая такая же сумма не приняла чужую запись за свою. Добавляем — только начиная с since.
+  const txs = acc.tx.filter(t => t.cur === 'PLN').sort((a, b) => a.date.localeCompare(b.date))
   for (const tx of txs) {
     const known = s.ops.find(o => o.bankTx === tx.id && o.bank === bank)
     if (known) {
@@ -46,6 +48,7 @@ function syncAccount(s: State, bank: Bank, acc: BankAccount, since: string, rate
       op.bankPending = tx.pending
       continue
     }
+    if (tx.date.slice(0, 10) < since) continue
     // Уведомление не пришло: операция из выписки. Остаток не трогаем — он ниже берётся из банка целиком.
     const added: Op = {
       id: -(Date.parse(acc.at) + seq.n++),
@@ -77,19 +80,23 @@ function syncAccount(s: State, bank: Bank, acc: BankAccount, since: string, rate
 }
 
 /** Учесть новую выписку банка: дописать пропущенные операции и выровнять остатки. Возвращает новое состояние. */
+const RULES = 3
+const shift = (d: string, days: number) => new Date(Date.parse(d) + days * DAY).toISOString().slice(0, 10)
+
 export function reconcile(prev: State, feed: BankFeed, rates: Rates): State {
-  if (!feed?.fetchedAt || prev.bankSync?.fetchedAt === feed.fetchedAt) return prev
+  if (!feed?.fetchedAt || (prev.bankSync?.fetchedAt === feed.fetchedAt && prev.bankSync?.v === RULES)) return prev
   const s: State = structuredClone(prev)
-  // Первая выписка: прошлое уже учтено вручную. Карты PKO проводятся через 1–3 дня с датой проведения,
-  // поэтому операции без уведомления добавляем только через 3 дня после подключения — остатки выравниваются сразу.
-  const since = s.bankSync?.since ?? new Date(Date.parse(feed.fetchedAt.slice(0, 10)) + 3 * DAY).toISOString().slice(0, 10)
+  // Первая выписка: прошлое уже учтено вручную — добавляем только операции с дня подключения.
+  // Карты PKO проводятся через 1–3 дня с датой проведения, поэтому для PKO — ещё через 3 дня; остатки выравниваются сразу.
+  const start = s.bankSync?.start ?? (s.bankSync ? shift(s.bankSync.since, -3) : feed.fetchedAt.slice(0, 10))
+  const since = shift(start, 3)
   const seq = { n: 0 }
   for (const bank of ['pko', 'revolut'] as Bank[]) {
     const acc = mainAccount(feed, bank)
-    if (acc) syncAccount(s, bank, acc, since, rates, seq)
+    if (acc) syncAccount(s, bank, acc, bank === 'pko' ? since : start, rates, seq)
   }
   s.ops.sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
-  s.bankSync = { since, fetchedAt: feed.fetchedAt }
+  s.bankSync = { since, start, fetchedAt: feed.fetchedAt, v: RULES }
   return s
 }
 

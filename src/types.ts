@@ -165,7 +165,15 @@ export interface State {
   rules?: { kind: 'income' | 'skip' | 'taxpay' | 'expense'; match: string; column?: string; row?: string; rent?: 'chynsh' | 'electr'; keepBalance?: boolean }[]
   /** Как было до начала нового месяца — чтобы можно было вернуть, если дату выбрали по ошибке. */
   /** Сверка с банком: с какой даты операции из выписки добавляются в учёт, какая выписка уже учтена. */
-  bankSync?: { since: string; fetchedAt: string }
+  bankSync?: {
+    /** С какой даты операции PKO из выписки добавляются (день подключения + 3 дня: карты проводятся с опозданием). */
+    since: string
+    /** День подключения: с него добавляются операции Revolut (он проводит сразу). */
+    start?: string
+    fetchedAt: string
+    /** Версия правил сверки — сменилась, значит ту же выписку разобрать заново. */
+    v?: number
+  }
   lastCycle?: { at: string; payday: string; facts: { id: string; v: number }[]; subs: { id: string; paid: boolean; paidAmt?: number }[] }
 }
 

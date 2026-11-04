@@ -445,6 +445,28 @@ describe('сверка с выпиской банка', () => {
     expect(s2.incomes[0].amt.v).toBe(140)
   })
 
+  it('Revolut проводит сразу — его операции добавляются с дня подключения', async () => {
+    const { reconcile } = await import('./bank')
+    const s = sample()
+    s.bankLinks = { pko: 'a', revolut: 'b' }
+    const f = feedOf('2026-11-04T16:00:00Z', 988, [t('r1', '2026-11-04', 12, -1, 'Jan T'), t('r0', '2026-11-03', 5, -1)], 'revolut')
+    const s2 = reconcile(s, f, rates)
+    expect(s2.ops.map(o => o.amount)).toEqual([12])
+    expect(s2.incomes[1].amt.v).toBe(988)
+  })
+
+  it('прежняя сверка со старыми правилами разбирается заново, без дублей', async () => {
+    const { reconcile } = await import('./bank')
+    const s = sample()
+    s.bankLinks = { pko: 'a', revolut: 'b' }
+    const f = feedOf('2026-11-04T16:00:00Z', 988, [t('r1', '2026-11-04', 12, -1)], 'revolut')
+    s.bankSync = { since: '2026-11-07', fetchedAt: f.fetchedAt }
+    const s2 = reconcile(s, f, rates)
+    expect(s2.ops).toHaveLength(1)
+    expect(s2.bankSync).toMatchObject({ start: '2026-11-04', since: '2026-11-07' })
+    expect(reconcile(s2, f, rates)).toBe(s2)
+  })
+
   it('уведомление после выписки: не дублируется, а новое прибавляется к остатку', async () => {
     const { ingest } = await import('./state')
     const { reconcile } = await import('./bank')
@@ -527,5 +549,25 @@ describe('дата следующего списания подписки', () =
     expect(s.subs[0]).toMatchObject({ paid: true, day: 4 })
     undoOp(s, s.ops[0], rates)
     expect(s.subs[0]).toMatchObject({ paid: false, day: 5 })
+  })
+})
+
+describe('одинаковые суммы в разные дни', () => {
+  it('вчерашняя ручная запись не съедает сегодняшний перевод', async () => {
+    const { addManual } = await import('./state')
+    const { reconcile } = await import('./bank')
+    const s = sample()
+    s.bankLinks = { pko: 'a', revolut: 'b' }
+    addManual(s, 'revolut', -1, 12, 'Яну', rates, '2026-11-03T18:00:00Z')
+    const tx = (id: string, date: string) => ({ id, date, amount: 12, cur: 'PLN', dir: -1 as const, pending: false, text: 'Jan T' })
+    const f = {
+      fetchedAt: '2026-11-04T16:00:00Z',
+      sessions: {},
+      errors: [],
+      accounts: [{ uid: 'u', bank: 'revolut' as const, role: 'revolut', cur: 'PLN', last4: '0', available: 976, booked: null, at: '2026-11-04T16:00:00Z', tx: [tx('y', '2026-11-03'), tx('t', '2026-11-04')] }],
+    }
+    const s2 = reconcile(s, f, rates)
+    expect(s2.ops.find(o => o.manual)!.bankTx).toBe('y')
+    expect(s2.ops.filter(o => o.fromBank).map(o => o.bankTx)).toEqual(['t'])
   })
 })
