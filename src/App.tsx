@@ -61,6 +61,18 @@ export default function App() {
 
   const pullOps = useCallback(async () => {
     if (!settings.token) return
+    // Данные поменяли на другом устройстве (или вручную) — подхватить, если здесь нет несохранённых правок.
+    // Иначе это устройство при следующем сохранении записало бы поверх старое.
+    if (ready.current && !dirty.current && !saving.current) {
+      try {
+        const { state: remote, sha: h } = await loadData(settings)
+        if (remote && h && h !== sha.current && !dirty.current && !saving.current) {
+          sha.current = h
+          skip.current = true
+          setState(migrate(remote))
+        }
+      } catch {}
+    }
     try {
       inbox.current ??= await inboxNumber(settings)
       const comments = await fetchComments(settings, inbox.current)
