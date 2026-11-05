@@ -438,13 +438,13 @@ describe('сверка с выпиской банка', () => {
     expect(reconcile(s2, f, rates)).toBe(s2)
   })
 
-  it('прошлое до подключения не добавляется (с запасом 3 дня на проведение карт), остаток выравнивается', async () => {
+  it('прошлое до подключения не добавляется, с дня подключения — добавляется; остаток выравнивается', async () => {
     const { reconcile } = await import('./bank')
     const s = sample()
     s.bankLinks = { pko: 'a', revolut: 'b' }
-    const s2 = reconcile(s, feedOf('2026-11-04T16:00:00Z', 140, [t('old', '2026-11-01', 99, -1), t('late', '2026-11-04', 10, -1)]), rates)
-    expect(s2.ops).toHaveLength(0)
-    expect(s2.bankSync!.since).toBe('2026-11-07')
+    const s2 = reconcile(s, feedOf('2026-11-04T16:00:00Z', 140, [t('old', '2026-11-01', 99, -1), t('new', '2026-11-04', 10, -1)]), rates)
+    expect(s2.ops.map(o => o.bankTx)).toEqual(['new'])
+    expect(s2.bankSync).toMatchObject({ start: '2026-11-04', since: '2026-11-04' })
     expect(s2.incomes[0].amt.v).toBe(140)
   })
 
@@ -466,7 +466,7 @@ describe('сверка с выпиской банка', () => {
     s.bankSync = { since: '2026-11-07', fetchedAt: f.fetchedAt }
     const s2 = reconcile(s, f, rates)
     expect(s2.ops).toHaveLength(1)
-    expect(s2.bankSync).toMatchObject({ start: '2026-11-04', since: '2026-11-07' })
+    expect(s2.bankSync).toMatchObject({ start: '2026-11-04', since: '2026-11-04' })
     expect(reconcile(s2, f, rates)).toBe(s2)
   })
 

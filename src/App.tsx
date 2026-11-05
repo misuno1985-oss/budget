@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { capital, dm, itemPln, month, nextDue, parseDate, prepaidLeft, subPln, tax } from './calc'
-import { fetchComments, inboxNumber, loadBank, loadData, triggerBank, loadSettings, saveData, saveSettings, type Settings } from './github'
+import { loadBank, loadData, triggerBank, loadSettings, saveData, saveSettings, type Settings } from './github'
 import { cachedRates, fetchRates, nbpRateBefore, type RatesInfo } from './rates'
 import { bookedLabel } from './autobook'
 import { brandsOf, KAS_LOGO } from './brands'
 import { Background } from './Background'
 import { mainAccount, reconcile, sessionDaysLeft, txLabel } from './bank'
-import { addManual, applyOp, emptyState, findAutoTwin, ingest, migrate, removeManual, setPayday, uid, undoNewCycle, undoOp, unmatch } from './state'
+import { addManual, applyOp, emptyState, findAutoTwin, migrate, removeManual, setPayday, uid, undoNewCycle, undoOp, unmatch } from './state'
 import type { Bank, BankFeed, Op, Rates, State, TaxItem } from './types'
 import { CUR_SIGN } from './types'
 import { fmt, Logos, MoneyInput, Num, Rows, Txt } from './ui'
@@ -47,7 +47,6 @@ export default function App() {
   const [refreshing, setRefreshing] = useState('')
   const sha = useRef<string | null>(null)
   const ready = useRef(false)
-  const inbox = useRef<number | null>(null)
   const saving = useRef<Promise<void> | null>(null)
   const dirty = useRef(false)
 
@@ -73,13 +72,7 @@ export default function App() {
         }
       } catch {}
     }
-    try {
-      inbox.current ??= await inboxNumber(settings)
-      const comments = await fetchComments(settings, inbox.current)
-      setState(prev => (comments.some(c => c.id > prev.lastCommentId) ? ingest(prev, comments, rates.rates) : prev))
-    } catch {
-      setStatus('Не удалось прочитать уведомления')
-    }
+    // Уведомления с телефона больше не читаем: остаток и операции берутся только из выписки банка.
     try {
       const f = await loadBank(settings)
       if (f) applyFeed(f)
@@ -162,25 +155,30 @@ export default function App() {
           setState(m)
         } else setState(prev => ({ ...prev }))
         setStatus(s ? 'Загружено' : 'Новый файл данных')
-        return pullOps().then(f => {
-          // Выписка старше часа — при открытии программы обновить (не чаще раза в 30 минут).
-          let asked = 0
-          try {
-            asked = Number(localStorage.getItem('budget.bankAsked') || 0)
-          } catch {}
-          const old = !f || Date.now() - Date.parse(f.fetchedAt) > 36e5
-          if (old && Date.now() - asked > 18e5) refreshBank(true)
-        })
+        return pullOps().then(autoRefresh)
       })
       .catch(e => setStatus(e.status === 401 ? 'Ключ GitHub не подходит' : e.status === 404 ? 'Репозиторий не найден' : 'Нет связи с GitHub'))
   }, [settings.token, settings.repo]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  /** Выписка старше 15 минут — при открытии программы (или возврате в неё) обновить; не чаще раза в 5 минут. */
+  function autoRefresh(f?: BankFeed | null) {
+    let asked = 0
+    try {
+      asked = Number(localStorage.getItem('budget.bankAsked') || 0)
+    } catch {}
+    const old = !f || Date.now() - Date.parse(f.fetchedAt) > 15 * 6e4
+    if (old && Date.now() - asked > 5 * 6e4) refreshBank(true)
+  }
+
   useEffect(() => {
-    const onFocus = () => pullOps()
+    const onFocus = () => pullOps().then(f => ready.current && autoRefresh(f))
+    const onShow = () => document.visibilityState === 'visible' && onFocus()
+    document.addEventListener('visibilitychange', onShow)
     window.addEventListener('focus', onFocus)
     const t = setInterval(pullOps, 60_000)
     return () => {
       window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onShow)
       clearInterval(t)
     }
   }, [pullOps])
@@ -229,6 +227,7 @@ export default function App() {
   const t = tax(state)
   const unknown = state.ops.filter(o => o.status === 'unknown').length
   const expiring = sessionDaysLeft(feed).filter(x => x.days < 14)
+  const staleHours = feed ? Math.floor((today.getTime() - Date.parse(feed.fetchedAt)) / 36e5) : 0
 
   // Валютные доходы без курса (добавлены из уведомления) — подтянуть курс NBP за день до, чтобы налог считался сразу.
   const fetching = useRef(new Set<string>())
@@ -261,6 +260,11 @@ export default function App() {
         </div>
       </header>
 
+      {settings.token && feed && staleHours >= 24 && (
+        <p className="warn small banner">
+          Выписка банка не обновлялась {staleHours >= 48 ? `${Math.floor(staleHours / 24)} дн.` : 'больше суток'} — остатки могут быть устаревшими. Нажмите «Обновить из банка»; не помогает — напишите Claude.
+        </p>
+      )}
       {expiring.map(x => (
         <p key={x.bank} className="warn small banner">
           {x.days < 0
@@ -686,10 +690,7 @@ export default function App() {
       {tab === 'Операции' && (
         <div className="card">
           <div className="row-between">
-            <h3>Уведомления банков</h3>
-            <button className="add" onClick={pullOps}>
-              Проверить сейчас
-            </button>
+            <h3>Операции</h3>
           </div>
           {(['pko', 'revolut'] as Bank[]).map(b =>
             linkedName(state, b) ? null : (
@@ -774,7 +775,7 @@ export default function App() {
 
       {tab === 'Дочка' && <DaughterTab feed={feed} />}
 
-      {tab === 'Настройки' && <SettingsTab state={state} upd={upd} settings={settings} setSettings={setSettings} inbox={inbox.current} />}
+      {tab === 'Настройки' && <SettingsTab state={state} upd={upd} settings={settings} setSettings={setSettings} />}
 
       <footer className="small">{status}</footer>
     </div>
@@ -813,7 +814,7 @@ function TaxItemRow({ it, rates, onChange, onDelete }: { it: TaxItem; rates: Rat
           ×
         </button>
       </div>
-      {it.auto && <div className="taxrate">авто, из уведомления банка</div>}
+      {it.auto && <div className="taxrate">авто, из банка</div>}
       {cur !== 'PLN' && (
         <div className="taxrate">
           {it.rate ? `курс NBP ${fmt(it.rate, 4)} (${(it.rateDay ?? '').split('-').reverse().join('.')}) = ${fmt(itemPln(it))} zł` : 'курс NBP загружается…'}
@@ -823,7 +824,7 @@ function TaxItemRow({ it, rates, onChange, onDelete }: { it: TaxItem; rates: Rat
   )
 }
 
-/** Ручная запись операции, когда уведомление не пришло. Вносится по «Ввод». */
+/** Ручная запись операции (наличные и то, чего нет в банке). Вносится по «Ввод». */
 function ManualForm({ state, upd, rates }: { state: State; upd: (f: (s: State) => void) => void; rates: Rates }) {
   const [bank, setBank] = useState<Bank>('revolut')
   const [dir, setDir] = useState<1 | -1>(-1)
@@ -862,7 +863,7 @@ function ManualForm({ state, upd, rates }: { state: State; upd: (f: (s: State) =
       </span>
       <input className={'num' + (amount ? ' pending' : '')} placeholder="0,00" value={amount} enterKeyHint="enter" onChange={e => setAmount(e.target.value)} onKeyDown={onKey} />
       <input className="note" placeholder="заметка (жене, Żabka…)" value={note} enterKeyHint="enter" onChange={e => setNote(e.target.value)} onKeyDown={onKey} />
-      <span className="muted small">↵ Ввод — внести. Если позже придёт уведомление на ту же сумму, второй раз оно не посчитается.</span>
+      <span className="muted small">↵ Ввод — внести. Когда та же операция придёт из банка, второй раз она не посчитается.</span>
     </div>
   )
 }
@@ -874,7 +875,7 @@ function linkedName(s: State, b: Bank): string | null {
 
 function BankTag({ s, id }: { s: State; id: string }) {
   const b = (Object.keys(s.bankLinks) as Bank[]).find(k => s.bankLinks[k] === id)
-  return b ? <span className="tag" title="Меняется по уведомлениям банка">авто {BANK_NAME[b]}</span> : null
+  return b ? <span className="tag" title="Остаток берётся из выписки банка">авто {BANK_NAME[b]}</span> : null
 }
 
 function SettingsTab({
@@ -882,18 +883,15 @@ function SettingsTab({
   upd,
   settings,
   setSettings,
-  inbox,
 }: {
   state: State
   upd: (f: (s: State) => void) => void
   settings: Settings
   setSettings: (s: Settings) => void
-  inbox: number | null
 }) {
   const [token, setToken] = useState(settings.token)
   const [repo, setRepo] = useState(settings.repo)
   const rows = [...state.incomes.map(r => ({ ...r, g: 'Месяц' })), ...state.assets.map(r => ({ ...r, g: 'Капитал' }))]
-  const url = inbox ? `https://api.github.com/repos/${settings.repo}/issues/${inbox}/comments` : '— появится после подключения —'
   return (
     <div className="grid">
       <div className="card">
@@ -919,7 +917,7 @@ function SettingsTab({
         <p className="muted small">Ключ хранится только в этом браузере. Страница программы открыта всем, но без ключа в ней нет ваших данных.</p>
       </div>
       <div className="card">
-        <h3>Какие счета меняют уведомления</h3>
+        <h3>Куда ставить остаток из банка</h3>
         {(['pko', 'revolut'] as Bank[]).map(b => (
           <label key={b} className="field">
             {BANK_NAME[b]}
@@ -933,23 +931,6 @@ function SettingsTab({
             </select>
           </label>
         ))}
-      </div>
-      <div className="card wide">
-        <h3>Команда на iPhone</h3>
-        <p className="small">В каждую Команду (PKO и Revolut) после шага «Добавить в файл» добавьте шаг «Получить содержимое URL»:</p>
-        <ul className="small">
-          <li>
-            URL: <code>{url}</code>
-          </li>
-          <li>Метод: POST</li>
-          <li>
-            Заголовки: <code>Authorization</code> = <code>Bearer ваш_ключ</code>
-          </li>
-          <li>
-            Текст запроса — JSON, поле <code>body</code> = <code>PKO: </code>
-            <i>текст уведомления</i> (для второй Команды — <code>revolut: </code>…)
-          </li>
-        </ul>
       </div>
       <div className="card wide">
         <h3>Копия данных</h3>
