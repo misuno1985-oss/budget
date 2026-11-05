@@ -753,12 +753,16 @@ export default function App() {
                         </button>{' '}
                         <button className="add" onClick={() => upd(s => void (s.ops[i].status = 'ignored'))}>
                           не считать
-                        </button>
+                        </button>{' '}
+                        <DropOp id={o.id} upd={upd} />
                       </>
                     ) : (
-                      <button className="add" onClick={() => upd(s => void (s.ops[i].status = 'unknown'))}>
-                        вернуть
-                      </button>
+                      <>
+                        <button className="add" onClick={() => upd(s => void (s.ops[i].status = 'unknown'))}>
+                          вернуть
+                        </button>{' '}
+                        <DropOp id={o.id} upd={upd} />
+                      </>
                     )}
                   </td>
                 </tr>
@@ -1172,5 +1176,14 @@ function RentCard({ p, i, upd }: { p: State['rent'][number]; i: number; upd: (f:
         </div>
       )}
     </div>
+  )
+}
+
+/** Убрать из списка уведомление, которое ни на что не повлияло (вход в приложение, реклама и т. п.). Повторно оно не появится. */
+function DropOp({ id, upd }: { id: number; upd: (f: (s: State) => void) => void }) {
+  return (
+    <button className="x" aria-label="Удалить" title="Удалить из списка" onClick={() => upd(s => void (s.ops = s.ops.filter(o => o.id !== id)))}>
+      ×
+    </button>
   )
 }

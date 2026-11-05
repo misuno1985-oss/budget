@@ -574,3 +574,13 @@ describe('одинаковые суммы в разные дни', () => {
     expect(s2.ops.filter(o => o.fromBank).map(o => o.bankTx)).toEqual(['t'])
   })
 })
+
+describe('уведомления без суммы', () => {
+  it('в список операций не попадают', async () => {
+    const { ingest } = await import('./state')
+    const s = sample()
+    const s2 = ingest(s, [{ id: 3, created_at: '2026-11-04T16:00:00Z', body: 'revolut: Stuknij, aby wyświetlić szczegóły.' }], rates)
+    expect(s2.ops).toHaveLength(0)
+    expect(s2.lastCommentId).toBe(3)
+  })
+})

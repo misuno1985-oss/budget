@@ -72,6 +72,8 @@ export function ingest(prev: State, comments: Comment[], rates: Rates): State {
     const { bank, text } = splitComment(c.body)
     if (!bank || !text) continue
     const p = parseNotification(text)
+    // Без суммы — это не деньги (вход в приложение, «нажмите, чтобы посмотреть», реклама): в список не берём.
+    if (p.amount === null) continue
     const op: Op = { id: c.id, at: c.created_at, bank, text, amount: p.amount, cur: p.cur, dir: p.dir, status: 'unknown' }
     if (p.balance !== undefined) op.balance = p.balance
     const twin = p.amount !== null ? findManualTwin(s, op) : undefined
