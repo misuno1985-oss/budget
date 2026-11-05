@@ -13,9 +13,12 @@ const parseNum = (s: string) => {
   return Number.isFinite(n) ? n : 0
 }
 
+/** Телефон/планшет: у цифровой клавиатуры iPhone нет «Ввода» — значение вносится, когда уходишь из поля. */
+const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
+
 /**
- * Поле, которое вносит значение только по «Ввод». Ушли без «Ввода» — вписанное отменяется.
- * Пока не подтверждено, поле подсвечено (класс pending).
+ * Поле, которое на компьютере вносит значение только по «Ввод» (ушли без «Ввода» — вписанное отменяется),
+ * а на телефоне — и при уходе из поля. Пока не подтверждено, поле подсвечено (класс pending).
  */
 function Draft({
   shown,
@@ -23,12 +26,14 @@ function Draft({
   className,
   width,
   placeholder,
+  inputMode,
 }: {
   shown: string
   commit: (text: string) => void
   className: string
   width?: number
   placeholder?: string
+  inputMode?: 'decimal'
 }) {
   const [text, setText] = useState(shown)
   const editing = useRef(false)
@@ -44,13 +49,17 @@ function Draft({
         style={width ? { width } : undefined}
         value={text}
         placeholder={placeholder}
+        inputMode={touch ? inputMode : undefined}
         enterKeyHint="enter"
         title={pending ? 'Нажмите «Ввод», чтобы внести' : undefined}
         onFocus={() => (editing.current = true)}
         onBlur={() => {
           editing.current = false
-          // После «Ввода» оставляем вписанное — значение уже внесено; иначе отменяем.
-          if (!committed.current) setText(shown)
+          // После «Ввода» оставляем вписанное — значение уже внесено; на телефоне вносим и без «Ввода»; иначе отменяем.
+          if (!committed.current) {
+            if (touch && text !== shown) commit(text)
+            else setText(shown)
+          }
           committed.current = false
         }}
         onKeyDown={e => {
@@ -88,7 +97,7 @@ export function Num({
   money?: boolean
 }) {
   const commit = (t: string) => onChange(money ? Math.round(parseNum(t) * 100) / 100 : parseNum(t))
-  return <Draft shown={numText(value, money)} commit={commit} className={className ?? 'num'} width={width} placeholder={money ? '0,00' : '0'} />
+  return <Draft shown={numText(value, money)} commit={commit} className={className ?? 'num'} width={width} placeholder={money ? '0,00' : '0'} inputMode="decimal" />
 }
 
 /** Текст (название строки), вносится по «Ввод». */
