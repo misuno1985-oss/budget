@@ -18,7 +18,7 @@ const toNum = (s: string) => Number(s.replace(/[  ]/g, '').replace('−', '-').
 
 // Порядок важен: «otrzyma od Ciebie» — это исходящий перевод, хотя в нём есть «otrzyma».
 const OUT = [
-  /od ciebie/i, /zapłac/i, /płatnoś/i, /obciąż/i, /wypłat/i, /transakcj/i, /zakup/i,
+  /od ciebie/i, /wydan[oa]/i, /wyda(łeś|łaś)/i, /zapłac/i, /płatnoś/i, /obciąż/i, /wypłat/i, /transakcj/i, /zakup/i,
   /przelew wychodz/i, /wysła(łeś|łaś|no)/i, /przela(łeś|łaś)/i, /\bspent\b/i, /\bpaid\b/i, /\bsent\b/i,
   /\bcard payment\b/i, /\bwithdraw/i,
 ]
@@ -31,11 +31,11 @@ export interface Parsed {
   amount: number | null
   cur: Cur
   dir: 1 | -1 | 0
-  /** Остаток на счёте после операции, если банк его пишет (PKO: «Stan konta po transakcji»). */
+  /** Остаток на счёте после операции, если банк его пишет (PKO: «Stan konta po transakcji», Revolut: «Saldo PLN»). */
   balance?: number
 }
 
-const BALANCE = new RegExp(`(?:stan konta po transakcji|saldo po operacji|dostępne środki)\\s*:?\\s*(${NUM})\\s?(?:zł|zl|PLN)`, 'iu')
+const BALANCE = new RegExp(`(?:stan konta po transakcji|saldo po operacji|dostępne środki|saldo(?:\\s+(?:pln|zł))?)\\s*:?\\s*(${NUM})\\s?(?:zł|zl|PLN)`, 'iu')
 
 export function parseNotification(text: string): Parsed {
   let amount: number | null = null

@@ -23,6 +23,9 @@ describe('разбор уведомлений', () => {
     expect(parseNotification('Transakcja: -45,00 PLN')).toMatchObject({ amount: 45, dir: -1 })
     expect(parseNotification('Operacja +45,00 PLN')).toMatchObject({ amount: 45, dir: 1 })
   })
+  it('Revolut: «Wydano … Saldo PLN» — списание и остаток', () => {
+    expect(parseNotification('Wydano 45 zł\nSaldo PLN: 1 234,56 zł')).toEqual({ amount: 45, cur: 'PLN', dir: -1, balance: 1234.56 })
+  })
   it('непонятное — направление 0', () => {
     expect(parseNotification('Coś się stało 10 zł')).toMatchObject({ amount: 10, dir: 0 })
     expect(parseNotification('Bez kwoty')).toMatchObject({ amount: null })
