@@ -537,11 +537,16 @@ describe('дата следующего списания подписки', () =
     expect(dm(nextDue({ id: 'a', name: 'A', day: 19, price: 1, paid: true }, s, t).date)).toBe('19.11')
     expect(dm(nextDue({ id: 'a', name: 'A', day: 31, price: 1, paid: true }, s, t).date)).toBe('30.11')
   })
-  it('день прошёл, а списания нет — просрочка', async () => {
+  it('день прошёл, а списания нет — просрочка; PKO проводит с задержкой — три дня отсрочки', async () => {
     const { nextDue } = await import('./calc')
     const s = st()
-    expect(nextDue({ id: 'a', name: 'A', day: 3, price: 1, paid: false }, s, new Date(2026, 10, 4)).overdue).toBe(true)
+    const a = { id: 'a', name: 'A', day: 3, price: 1, paid: false }
+    expect(nextDue(a, s, new Date(2026, 10, 6)).overdue).toBe(false)
+    expect(nextDue(a, s, new Date(2026, 10, 7)).overdue).toBe(true)
     expect(nextDue({ id: 'a', name: 'A', day: 8, price: 1, paid: false }, s, new Date(2026, 10, 4)).overdue).toBe(false)
+    // Прошлый раз списалось с Revolut — он проводит сразу, отсрочки нет.
+    s.ops.push({ id: 1, at: '2026-10-03T10:00:00Z', bank: 'revolut', text: 'A', amount: 1, cur: 'PLN', dir: -1, status: 'applied', subId: 'a' })
+    expect(nextDue(a, s, new Date(2026, 10, 4)).overdue).toBe(true)
   })
   it('списали на день раньше — подписка переезжает на этот день; отмена возвращает', async () => {
     const { ingest, undoOp } = await import('./state')

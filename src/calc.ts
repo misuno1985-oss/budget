@@ -95,15 +95,25 @@ export function cycleStart(s: State, today: Date): Date {
 }
 
 /**
+ * Сколько дней ждать списания после его дня, прежде чем считать просрочкой. День подписки — когда уходят деньги;
+ * PKO показывает карточную оплату в выписке через 1–3 дня, Revolut — сразу. Банк — по прошлому списанию этой подписки.
+ */
+export function subGrace(x: Sub, s: State): number {
+  const last = s.ops.filter(o => o.subId === x.id).sort((a, b) => b.at.localeCompare(a.at))[0]
+  return last?.bank === 'revolut' ? 0 : 3
+}
+
+/**
  * Следующее списание подписки: первый её день начиная с начала месяца бюджета;
- * уже оплачена — тот же день месяцем позже. Не оплачена, а день прошёл — просрочка.
+ * уже оплачена — тот же день месяцем позже. Не оплачена, а день прошёл (с отсрочкой на проведение банком) — просрочка.
  */
 export function nextDue(x: Sub, s: State, today: Date): { date: Date; overdue: boolean } {
   const st = cycleStart(s, today)
   let d = onDay(st.getFullYear(), st.getMonth(), x.day)
   if (d < st) d = onDay(st.getFullYear(), st.getMonth() + 1, x.day)
   if (x.paid) d = onDay(d.getFullYear(), d.getMonth() + 1, x.day)
-  return { date: d, overdue: !x.paid && d < startOfDay(today) }
+  const late = new Date(d.getFullYear(), d.getMonth(), d.getDate() + subGrace(x, s))
+  return { date: d, overdue: !x.paid && late < startOfDay(today) }
 }
 
 /** Порядок подписок в списке: сначала неоплаченные по ближайшему сроку (просроченные — первыми), оплаченные — в самом низу. */
