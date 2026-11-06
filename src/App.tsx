@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { capital, dm, itemPln, month, nextDue, parseDate, prepaidLeft, subPln, tax } from './calc'
+import { capital, dm, itemPln, month, nextDue, parseDate, prepaidLeft, subOrder, subPln, tax } from './calc'
 import { loadBank, loadData, triggerBank, loadSettings, saveData, saveSettings, type Settings } from './github'
 import { cachedRates, fetchRates, nbpRateBefore, type RatesInfo } from './rates'
 import { bookedLabel } from './autobook'
@@ -352,7 +352,7 @@ export default function App() {
                 </tr>
               </thead>
               <tbody>
-                {state.subs.map((x, i) => (
+                {subOrder(state, today).map(i => [state.subs[i], i] as const).map(([x, i]) => (
                   <tr key={x.id} className={x.paid ? 'paid' : ''}>
                     <td>
                       <div className="nmcell">
@@ -1052,7 +1052,8 @@ function SubsList({ state, upd, rates, today }: { state: State; upd: (f: (s: Sta
   const [open, setOpen] = useState<string | null>(null)
   return (
     <div className="mob sublist">
-      {state.subs.map((x, i) => {
+      {subOrder(state, today).map(i => {
+        const x = state.subs[i]
         const pln = subPln(x, rates)
         return (
           <div key={x.id} className={'subrow' + (x.paid ? ' paid' : '')}>

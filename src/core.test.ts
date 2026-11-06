@@ -584,3 +584,47 @@ describe('уведомления без суммы', () => {
     expect(s2.lastCommentId).toBe(3)
   })
 })
+
+describe('подписки через Apple и порядок списка', () => {
+  const feedOf = (tx: any[]) => ({
+    fetchedAt: '2026-11-20T16:00:00Z',
+    sessions: {},
+    errors: [],
+    accounts: [{ uid: 'u1', bank: 'pko' as any, role: 'pko', cur: 'PLN', last4: '0000', available: 100, booked: null, at: '2026-11-20T16:00:00Z', tx }],
+  })
+  const apple = (id: string, date: string, amount: number) => ({ id, date, amount, cur: 'PLN', dir: -1, pending: false, text: 'APPLE.COM/BILAPPLE.COM/BILLIE' })
+  const withApple = () => {
+    const s = sample()
+    s.bankLinks = { pko: 'a', revolut: 'b' }
+    s.bankSync = { since: '2026-11-01', start: '2026-11-01', fetchedAt: '' }
+    s.subs = [
+      { id: 'cloud', name: 'iCloud+', day: 18, price: 9.5, paid: false },
+      { id: 'school', name: 'Librus', day: 12, price: 9.5, paid: false },
+      { id: 'kid', name: 'Apple — ChatGPT дочки', day: 7, price: 21, paid: false },
+    ]
+    return s
+  }
+
+  it('одинаковая цена — галочку получает подписка, ближайшая по дню', async () => {
+    const { reconcile } = await import('./bank')
+    const s = reconcile(withApple(), feedOf([apple('x1', '2026-11-12', 9.5)]), rates)
+    expect(s.subs.map(x => x.paid)).toEqual([false, true, false])
+    const s2 = reconcile(withApple(), feedOf([apple('x2', '2026-11-18', 9.5)]), rates)
+    expect(s2.subs.map(x => x.paid)).toEqual([true, false, false])
+  })
+
+  it('подписка с «Apple» в названии узнаёт списание APPLE.COM/BILL', async () => {
+    const { reconcile } = await import('./bank')
+    const s = reconcile(withApple(), feedOf([apple('x3', '2026-11-07', 21)]), rates)
+    expect(s.subs.find(x => x.id === 'kid')!.paid).toBe(true)
+  })
+
+  it('сверху ближайшие неоплаченные, оплаченные — внизу', async () => {
+    const { subOrder } = await import('./calc')
+    const s = withApple()
+    s.payday = '2026-11-10'
+    s.subs[1].paid = true
+    const order = subOrder(s, new Date(2026, 10, 11)).map(i => s.subs[i].id)
+    expect(order).toEqual(['cloud', 'kid', 'school'])
+  })
+})

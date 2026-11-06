@@ -19,6 +19,7 @@ const LIST: [RegExp, Brand][] = [
   [/claude|клод/i, { key: 'claude', src: B + 'claude.svg' }],
   [/revolut|револют/i, { key: 'revolut', src: B + 'revolut.svg' }],
   [/hetzner/i, { key: 'hetzner', src: B + 'hetzner.svg' }],
+  [/librus|либрус/i, { key: 'librus', src: B + 'librus.svg' }],
   [/\bpko\b|пко/i, { key: 'pko', src: B + 'pko.png' }],
   [/цвет|flowers|stem\s*by\s*stem|kwiat/i, { key: 'flowers', src: B + 'stembystem.png' }],
   [/patreon|патреон/i, { key: 'patreon', src: B + 'patreon.svg', color: '#FF424D' }],
@@ -61,6 +62,7 @@ const MERCHANT: Record<string, { re: RegExp; strong: boolean }> = {
   claude: { re: /anthropic|claude/i, strong: true },
   revolut: { re: /\bmetal\b|opłata za plan|plan fee/i, strong: false },
   hetzner: { re: /hetzner/i, strong: true },
+  librus: { re: /librus|apple\.com\/bill|apple services/i, strong: false },
   pko: { re: /opłata|prowizja/i, strong: false },
   flowers: { re: /stembystem|stem by stem|flowers|kwiaciarn|kwiaty/i, strong: false },
 }
@@ -68,8 +70,10 @@ const MERCHANT: Record<string, { re: RegExp; strong: boolean }> = {
 /** Насколько уверенно текст списания относится к подписке с таким названием: 2 — точно, 1 — если сойдётся цена, 0 — нет. */
 export function merchantHit(subName: string, text: string): 0 | 1 | 2 {
   const brands = brandsOf(subName)
+  // Подписка, оплачиваемая через Apple («Apple — ChatGPT …»): в выписке она — APPLE.COM/BILL, различаем по цене и дню.
+  const viaApple: 0 | 1 = /apple|эппл/i.test(subName) && MERCHANT.icloud.re.test(text) ? 1 : 0
   if (brands.length) {
-    let best: 0 | 1 | 2 = 0
+    let best: 0 | 1 | 2 = viaApple
     for (const b of brands) {
       const m = MERCHANT[b.key]
       if (m?.re.test(text)) best = Math.max(best, m.strong ? 2 : 1) as 0 | 1 | 2

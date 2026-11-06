@@ -219,7 +219,12 @@ export function markSub(s: State, op: Op, rates: Rates) {
   const near = (r: number) => r > 0 && Math.abs(pln - r) <= Math.max(2, r * 0.25)
   const cands = s.subs.filter(x => !x.paid).map(x => ({ x, hit: merchantHit(x.name, text), rest: subRemaining(x, rates) }))
   const hits = cands.filter(c => c.hit > 0)
-  const close = hits.filter(c => near(c.rest)).sort((a, b) => Math.abs(pln - a.rest) - Math.abs(pln - b.rest))[0]
+  // Несколько подписок с похожей ценой (iCloud+ и Librus через Apple по 14,99) — ближе по дню месяца та, что списалась.
+  const opDay = new Date(op.at).getDate()
+  const dayGap = (d: number) => Math.min(Math.abs(opDay - d), 31 - Math.abs(opDay - d))
+  const close = hits
+    .filter(c => near(c.rest))
+    .sort((a, b) => Math.abs(pln - a.rest) + dayGap(a.x.day) * 0.2 - (Math.abs(pln - b.rest) + dayGap(b.x.day) * 0.2))[0]
   const part = hits.find(c => c.x.partial && pln < c.rest - 0.01)
   const strong = hits.find(c => c.hit === 2 && !c.x.partial)
   if (close) {

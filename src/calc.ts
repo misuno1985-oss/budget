@@ -106,4 +106,10 @@ export function nextDue(x: Sub, s: State, today: Date): { date: Date; overdue: b
   return { date: d, overdue: !x.paid && d < startOfDay(today) }
 }
 
+/** Порядок подписок в списке: сначала неоплаченные по ближайшему сроку (просроченные — первыми), оплаченные — в самом низу. */
+export function subOrder(s: State, today: Date): number[] {
+  const due = s.subs.map(x => nextDue(x, s, today).date.getTime())
+  return s.subs.map((_, i) => i).sort((a, b) => Number(s.subs[a].paid) - Number(s.subs[b].paid) || due[a] - due[b])
+}
+
 export const dm = (d: Date) => `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, '0')}`
