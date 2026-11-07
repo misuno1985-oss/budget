@@ -9,6 +9,8 @@ import { mainAccount, reconcile, sessionDaysLeft, txLabel } from './bank'
 import { addManual, applyOp, emptyState, findAutoTwin, migrate, removeManual, setPayday, uid, undoNewCycle, undoOp, unmatch } from './state'
 import type { Bank, BankFeed, Op, Rates, State, TaxItem } from './types'
 import { CUR_SIGN } from './types'
+import { buildGrid, sheetBody } from './sheet'
+import { createSpreadsheet, googleToken } from './gsheet'
 import { fmt, Logos, MoneyInput, Num, Rows, Txt } from './ui'
 
 const LKEY = 'budget.state'
@@ -254,6 +256,7 @@ export default function App() {
             </button>
           ))}
         </nav>
+        <SheetButton state={state} rates={R} today={today} settings={settings} openSettings={() => setTab('Настройки')} />
         <div className="rates">
           $ {fmt(R.USD, 4)} · € {fmt(R.EUR, 4)} · BYN {fmt(R.BYN, 4)} · ₽ {fmt(R.RUB, 4)}
           <span className="muted"> NBP {rates.date && rates.date.split('-').reverse().slice(0, 2).join('.')}</span>
@@ -891,6 +894,7 @@ function SettingsTab({
 }) {
   const [token, setToken] = useState(settings.token)
   const [repo, setRepo] = useState(settings.repo)
+  const [google, setGoogle] = useState(settings.google ?? '')
   const rows = [...state.incomes.map(r => ({ ...r, g: 'Месяц' })), ...state.assets.map(r => ({ ...r, g: 'Капитал' }))]
   return (
     <div className="grid">
@@ -907,7 +911,7 @@ function SettingsTab({
         <button
           className="primary"
           onClick={() => {
-            const s = { token, repo }
+            const s = { ...settings, token, repo }
             saveSettings(s)
             setSettings(s)
           }}
@@ -931,6 +935,24 @@ function SettingsTab({
             </select>
           </label>
         ))}
+      </div>
+      <div className="card">
+        <h3>Google-таблица (кнопка «Получить Excel»)</h3>
+        <label className="field">
+          Идентификатор приложения Google (Client ID)
+          <input value={google} onChange={e => setGoogle(e.target.value.trim())} placeholder="….apps.googleusercontent.com" autoComplete="off" />
+        </label>
+        <button
+          className="primary"
+          onClick={() => {
+            const s = { ...settings, google }
+            saveSettings(s)
+            setSettings(s)
+          }}
+        >
+          Сохранить
+        </button>
+        <p className="muted small">Нужен один раз на этом компьютере. Программа получает доступ только к таблицам, которые сама создаёт, — остальной Google Диск ей не виден.</p>
       </div>
       <div className="card wide">
         <h3>Копия данных</h3>
@@ -1167,5 +1189,51 @@ function DropOp({ id, upd }: { id: number; upd: (f: (s: State) => void) => void 
     <button className="x" aria-label="Удалить" title="Удалить из списка" onClick={() => upd(s => void (s.ops = s.ops.filter(o => o.id !== id)))}>
       ×
     </button>
+  )
+}
+
+/**
+ * «Получить Excel» (только на компьютере): новая Google-таблица в раскладке старого листа с текущими данными.
+ * Каждый раз — отдельный файл; старая таблица пользователя не открывается и не меняется.
+ */
+function SheetButton({ state, rates, today, settings, openSettings }: { state: State; rates: Rates; today: Date; settings: Settings; openSettings: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [url, setUrl] = useState('')
+  const [err, setErr] = useState('')
+  const go = async () => {
+    if (!settings.google) return openSettings()
+    setBusy(true)
+    setErr('')
+    setUrl('')
+    try {
+      const token = await googleToken(settings.google)
+      const stamp = today.toLocaleDateString('ru-RU')
+      const link = await createSpreadsheet(token, sheetBody(buildGrid(state, rates, today), `Бюджет ${stamp}`, String(today.getFullYear())))
+      setUrl(link)
+      window.open(link, '_blank')
+    } catch (e: any) {
+      setErr(e.message || 'Не получилось')
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="desk sheetbtn">
+      <button className="add" disabled={busy} onClick={go} title="Новая Google-таблица в раскладке старого листа, с текущими данными">
+        {busy ? <span className="spin">⟳</span> : '▦'} {busy ? 'Создаю таблицу…' : 'Получить Excel'}
+      </button>
+      {url && (
+        <span className="small">
+          {' '}
+          <a href={url} target="_blank" rel="noreferrer">
+            открыть таблицу
+          </a>{' '}
+          <button className="link" onClick={() => navigator.clipboard?.writeText(url)}>
+            скопировать ссылку
+          </button>
+        </span>
+      )}
+      {err && <span className="warn small"> {err}</span>}
+    </div>
   )
 }

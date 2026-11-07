@@ -4,6 +4,8 @@ import type { BankFeed, State } from './types'
 export interface Settings {
   token: string
   repo: string // владелец/имя закрытого репозитория с данными
+  /** Идентификатор приложения Google (OAuth client ID) для кнопки «Получить Excel» — не секрет, только в этом браузере. */
+  google?: string
 }
 
 const SKEY = 'budget.settings'

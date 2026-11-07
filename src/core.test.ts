@@ -633,3 +633,29 @@ describe('подписки через Apple и порядок списка', () 
     expect(order).toEqual(['cloud', 'kid', 'school'])
   })
 })
+
+describe('таблица в раскладке старого листа', () => {
+  it('блоки на своих местах, формулы ссылаются на нужные ячейки', async () => {
+    const { buildGrid, sheetBody } = await import('./sheet')
+    const s = sample()
+    s.payday = '2026-11-10'
+    s.subs = Array.from({ length: 15 }, (_, i) => ({ id: 's' + i, name: 'Сервис ' + i, day: i + 1, price: 10, paid: i > 0 }))
+    s.rent = [{ id: 'r', date: '2026-01-05', chynsh: 900, electr: 100, rent: 3000, note: '' }]
+    const g = buildGrid(s, rates, new Date(2026, 10, 7))
+    expect(g.get('B1')!.v).toBe('Доходы')
+    expect(g.get('E16')!.f).toBe('=SUM(B16-D16)')
+    // 15 подписок — «ИТОГО» опускается на строку 17, «Подписки» в расходах берут её.
+    expect(g.get('L17')!.v).toBe('ИТОГО:')
+    expect(g.get('D12')!.f).toBe('=M17')
+    expect(g.get('M2')!.v).toBe(10)
+    expect(g.get('A23')!.v).toBe('Итого:')
+    expect(g.get('B24')!.v).toBe('Чынш')
+    expect(g.get('A25')).toMatchObject({ date: '2026-01-05', fmt: 'dd.mm.yyyy' })
+    expect(g.get('F1')).toMatchObject({ date: '2026-10-10', fmt: 'dd.mm' })
+    expect(g.get('G1')!.v).toBe(31)
+    const body = sheetBody(g, 'Бюджет', '2026')
+    const cell = body.sheets[0].data[0].rowData[15].values[4] as any
+    expect(cell.userEnteredValue.formulaValue).toBe('=SUM(B16-D16)')
+    expect((body.sheets[0].data[0].rowData[0].values[5] as any).userEnteredValue.numberValue).toBe(46305)
+  })
+})
