@@ -47,6 +47,15 @@ export default function App() {
   const [today, setToday] = useState(() => new Date())
   const [feed, setFeed] = useState<BankFeed | null>(cachedFeed)
   const [refreshing, setRefreshing] = useState('')
+  // Телефон — только «Обновить из банка» и «Можно в день»; полная программа — на компьютере.
+  const [isPhone, setIsPhone] = useState(() => matchMedia('(max-width: 760px)').matches)
+  const [phoneSettings, setPhoneSettings] = useState(false)
+  useEffect(() => {
+    const q = matchMedia('(max-width: 760px)')
+    const on = () => setIsPhone(q.matches)
+    q.addEventListener('change', on)
+    return () => q.removeEventListener('change', on)
+  }, [])
   const sha = useRef<string | null>(null)
   const ready = useRef(false)
   const saving = useRef<Promise<void> | null>(null)
@@ -244,6 +253,34 @@ export default function App() {
       }
   }, [state.tax.columns, upd])
 
+  if (isPhone)
+    return (
+      <div className="app phone">
+        <Background tab="Месяц" />
+        {settings.token && !phoneSettings ? (
+          <div className="phonecard">
+            <button className="add phonebtn" disabled={!!refreshing} onClick={() => refreshBank(false)}>
+              {refreshing ? <span className="spin">⟳</span> : '⟳'} {refreshing || 'Обновить из банка'}
+            </button>
+            <p className="phonelabel">Можно в день</p>
+            <b className={'phonesum ' + (m.perDay === null ? '' : m.perDay < 0 ? 'neg' : 'pos')}>{m.perDay === null ? '—' : `${fmt(m.perDay)} zł`}</b>
+          </div>
+        ) : (
+          <>
+            {!settings.token && !phoneSettings && (
+              <div className="phonecard">
+                <p className="phonelabel">Нет ключа GitHub</p>
+              </div>
+            )}
+            {phoneSettings && <SettingsTab state={state} upd={upd} settings={settings} setSettings={s => (setSettings(s), setPhoneSettings(false))} />}
+            <button className="link phonelink" onClick={() => setPhoneSettings(!phoneSettings)}>
+              {phoneSettings ? 'Закрыть' : 'Настройки'}
+            </button>
+          </>
+        )}
+      </div>
+    )
+
   return (
     <div className="app">
       <Background tab={tab} />
@@ -258,7 +295,7 @@ export default function App() {
         </nav>
         <SheetButton state={state} rates={R} today={today} settings={settings} openSettings={() => setTab('Настройки')} />
         <div className="rates">
-          $ {fmt(R.USD, 4)} · € {fmt(R.EUR, 4)} · BYN {fmt(R.BYN, 4)} · ₽ {fmt(R.RUB, 4)}
+          $ {fmt(R.USD, 4)} · € {fmt(R.EUR, 4)}
           <span className="muted"> NBP {rates.date && rates.date.split('-').reverse().slice(0, 2).join('.')}</span>
         </div>
       </header>

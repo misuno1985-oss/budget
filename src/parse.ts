@@ -4,13 +4,11 @@ const CUR_WORDS: [RegExp, Cur][] = [
   [/^(zł|zl|pln)$/i, 'PLN'],
   [/^(eur|€)$/i, 'EUR'],
   [/^(usd|\$)$/i, 'USD'],
-  [/^byn$/i, 'BYN'],
-  [/^(rub|₽)$/i, 'RUB'],
 ]
 const curOf = (w: string): Cur | null => CUR_WORDS.find(([re]) => re.test(w))?.[1] ?? null
 
 const NUM = String.raw`[+\-−]?\d{1,3}(?:[  ]\d{3})+(?:[.,]\d{1,2})?|[+\-−]?\d+(?:[.,]\d{1,2})?`
-const CUR = String.raw`zł|zl|PLN|EUR|€|USD|\$|BYN|RUB|₽`
+const CUR = String.raw`zł|zl|PLN|EUR|€|USD|\$`
 const AFTER = new RegExp(`(${NUM})\\s?(${CUR})(?![\\p{L}])`, 'iu')
 const BEFORE = new RegExp(`(${CUR})\\s?(${NUM})`, 'iu')
 

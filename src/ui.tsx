@@ -121,28 +121,19 @@ export function Logos({ name }: { name: string }) {
 }
 
 /**
- * Сумма с валютой. Двойной клик (или долгое нажатие на телефоне) — меню валют.
+ * Сумма с валютой. Пока курсор в поле — рядом окошко «zł · $ · €»; ничего не выбрали — злотые.
+ * В валюте под суммой мелко — сколько это в злотых по курсу NBP.
  * live: курс всегда текущий (для денег, которые лежат в валюте); иначе курс фиксируется в момент выбора.
  */
 export function MoneyInput({ m, onChange, rates, live }: { m: Money; onChange: (m: Money) => void; rates: Rates; live?: boolean }) {
   const [menu, setMenu] = useState(false)
-  const timer = useRef<number>()
-  const wrap = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!menu) return
-    const close = (e: MouseEvent) => !wrap.current?.contains(e.target as Node) && setMenu(false)
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [menu])
   return (
-    <div className="money" ref={wrap}>
-      <div
-        className="money-in"
-        onDoubleClick={() => setMenu(true)}
-        onTouchStart={() => (timer.current = window.setTimeout(() => setMenu(true), 550))}
-        onTouchEnd={() => clearTimeout(timer.current)}
-        onTouchMove={() => clearTimeout(timer.current)}
-      >
+    <div
+      className="money"
+      onFocus={() => setMenu(true)}
+      onBlur={e => !e.currentTarget.contains(e.relatedTarget as Node) && setMenu(false)}
+    >
+      <div className="money-in">
         <Num value={m.v} onChange={v => onChange({ ...m, v })} />
         {m.cur !== 'PLN' && <span className="cur">{CUR_SIGN[m.cur]}</span>}
       </div>
@@ -152,10 +143,12 @@ export function MoneyInput({ m, onChange, rates, live }: { m: Money; onChange: (
           {CURRENCIES.map(c => (
             <button
               key={c}
+              type="button"
               className={c === m.cur ? 'on' : ''}
+              // Не уводить курсор из поля: вписанная сумма и «Ввод» продолжают работать.
+              onMouseDown={e => e.preventDefault()}
               onClick={() => {
-                onChange({ v: m.v, cur: c, ...(c === 'PLN' || live ? {} : { rate: rates[c] }) })
-                setMenu(false)
+                if (c !== m.cur) onChange({ v: m.v, cur: c, ...(c === 'PLN' || live ? {} : { rate: rates[c] }) })
               }}
             >
               {CUR_SIGN[c]}

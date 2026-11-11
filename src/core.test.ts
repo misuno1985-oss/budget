@@ -3,7 +3,7 @@ import { parseNotification, splitComment } from './parse'
 import { emptyState } from './state'
 import type { Rates, State } from './types'
 
-const rates: Rates = { PLN: 1, USD: 4, EUR: 4.5, BYN: 1.3, RUB: 0.05 }
+const rates: Rates = { PLN: 1, USD: 4, EUR: 4.5 }
 const today = new Date(2026, 10, 3, 15, 30)
 
 describe('разбор уведомлений', () => {

@@ -1,6 +1,6 @@
-export const CURRENCIES = ['PLN', 'USD', 'EUR', 'BYN', 'RUB'] as const
+export const CURRENCIES = ['PLN', 'USD', 'EUR'] as const
 export type Cur = (typeof CURRENCIES)[number]
-export const CUR_SIGN: Record<Cur, string> = { PLN: 'zł', USD: '$', EUR: '€', BYN: 'BYN', RUB: '₽' }
+export const CUR_SIGN: Record<Cur, string> = { PLN: 'zł', USD: '$', EUR: '€' }
 
 /** Сумма в любой валюте. rate — курс к злотому, зафиксированный при вводе; без него берётся текущий. */
 export interface Money {
