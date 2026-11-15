@@ -283,8 +283,10 @@ export default function App() {
 
   return (
     <div className="app">
-      <Background tab={tab} />
-      <header>
+      <aside className="side">
+        <div className="logo">
+          zł<b>+</b>
+        </div>
         <nav>
           {TABS.map(x => (
             <button key={x} className={x === tab ? 'tab on' : 'tab'} onClick={() => setTab(x)}>
@@ -293,6 +295,10 @@ export default function App() {
             </button>
           ))}
         </nav>
+      </aside>
+      <main className="main">
+      <Background tab={tab} />
+      <header>
         <SheetButton state={state} rates={R} today={today} settings={settings} openSettings={() => setTab('Настройки')} />
         <div className="rates">
           $ {fmt(R.USD, 4)} · € {fmt(R.EUR, 4)}
@@ -314,14 +320,18 @@ export default function App() {
       ))}
 
       <section className="kpi">
+        <div className="tile hero">
+          <p>Можно в день</p>
+          <b className={m.perDay === null ? '' : m.perDay < 0 ? 'neg' : ''}>{m.perDay === null ? 'выберите дату' : `${fmt(m.perDay)} zł`}</b>
+        </div>
         <div className="tile">
           <p>Остаток месяца</p>
-          <b className={m.rest < 0 ? 'neg' : ''}>{fmt(m.rest)} zł</b>
+          <b className={m.rest < 0 ? 'neg' : ''}>{fmt(m.rest)}</b>
         </div>
         <div className="tile pay">
           <p>Деньги придут</p>
           <label className="datebtn">
-            {state.payday ? parseDate(state.payday).toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' }) : 'выбрать дату'}
+            {state.payday ? parseDate(state.payday).toLocaleDateString('ru-RU', { weekday: 'short', day: '2-digit', month: '2-digit' }) : 'выбрать дату'}
             <input type="date" value={state.payday} onChange={e => upd(s => setPayday(s, e.target.value))} />
           </label>
           {state.lastCycle && Date.now() - Date.parse(state.lastCycle.at) < 864e5 && (
@@ -330,13 +340,9 @@ export default function App() {
             </button>
           )}
         </div>
-        <div className="tile">
-          <p>Дней осталось</p>
+        <div className="tile days">
+          <p>Дней</p>
           <b>{state.payday ? Math.max(0, m.days) : '—'}</b>
-        </div>
-        <div className="tile">
-          <p>Можно в день</p>
-          <b className={m.perDay === null ? '' : m.perDay < 0 ? 'neg' : 'pos'}>{m.perDay === null ? 'выберите дату' : `${fmt(m.perDay)} zł`}</b>
         </div>
       </section>
 
@@ -386,7 +392,7 @@ export default function App() {
                   <th>Сервис</th>
                   <th>День</th>
                   <th>Следующий</th>
-                  <th className="r">Цена, zł</th>
+                  <th className="r">Цена</th>
                   <th>Оплачено</th>
                   <th />
                 </tr>
@@ -818,6 +824,7 @@ export default function App() {
       {tab === 'Настройки' && <SettingsTab state={state} upd={upd} settings={settings} setSettings={setSettings} />}
 
       <footer className="small">{status}</footer>
+      </main>
     </div>
   )
 }

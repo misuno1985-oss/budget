@@ -1,51 +1,55 @@
-// Фон вкладки в духе Revolut: тонкие мягкие полосы, размытые блики, мелкое зерно. Рисуется программно.
-const THEMES: Record<string, [base: string, dark: string, light: string]> = {
-  Месяц: ['#4a1830', '#2a0d1b', '#f07aa3'],
-  Капитал: ['#4e5a17', '#262e08', '#dceb7a'],
-  Налоги: ['#6b3a1c', '#33190a', '#ecb98a'],
-  Покер: ['#123a31', '#06201a', '#7fd9b6'],
-  Квартира: ['#22417e', '#0e1d42', '#a9c4ff'],
-  Операции: ['#35285f', '#160f30', '#bfaeff'],
-  Дочка: ['#5a1f4f', '#2c0a26', '#f5a8e0'],
-  Настройки: ['#33363b', '#15161a', '#bcc1c8'],
+import type { CSSProperties } from 'react'
+
+// Фигуры Лисицкого для каждой вкладки — в правом верхнем углу листа, за содержимым, ничего не перекрывают.
+const INK = '#141414'
+const RED = '#d62828'
+const OCHRE = '#c49a3e'
+const box = (s: CSSProperties) => s
+
+const SHAPES: Record<string, CSSProperties[]> = {
+  // «Проун»: красный круг, охристая планка, длинная диагональ.
+  Месяц: [
+    box({ right: -110, top: -120, width: 340, height: 340, borderRadius: '50%', background: RED }),
+    box({ right: 250, top: -40, width: 34, height: 220, background: OCHRE, transform: 'rotate(26deg)' }),
+    box({ right: -60, top: 250, width: 520, height: 2, background: INK, transform: 'rotate(-14deg)' }),
+  ],
+  // «Проун» с объёмным блоком: чёрный куб в аксонометрии и красная планка.
+  Капитал: [
+    box({ right: 70, top: 40, width: 150, height: 150, background: INK, transform: 'skewY(-18deg)' }),
+    box({ right: 0, top: 40, width: 72, height: 150, background: '#3a3a3a', transform: 'skewY(30deg)' }),
+    box({ right: 70, top: 10, width: 150, height: 48, background: '#5a5a5a', transform: 'skewX(-40deg)' }),
+    box({ right: 20, top: 240, width: 220, height: 22, background: RED, transform: 'rotate(-18deg)' }),
+  ],
+  // «Клином красным бей белых»: красный клин входит в белый круг.
+  Налоги: [
+    box({ right: 20, top: -70, width: 250, height: 250, borderRadius: '50%', background: '#fff', border: `2px solid ${INK}` }),
+    box({ right: 150, top: 20, width: 0, height: 0, borderTop: '36px solid transparent', borderBottom: '36px solid transparent', borderLeft: `280px solid ${RED}`, transform: 'rotate(-14deg)' }),
+  ],
+  // «Сказ про два квадрата».
+  Покер: [
+    box({ right: 120, top: 20, width: 140, height: 140, background: INK }),
+    box({ right: 30, top: 110, width: 130, height: 130, background: RED, transform: 'rotate(-16deg)' }),
+  ],
+  // «Горизонтальный небоскрёб»: балка на опорах.
+  Квартира: [
+    box({ right: -20, top: 40, width: 300, height: 40, background: INK }),
+    box({ right: 200, top: 80, width: 22, height: 120, background: INK }),
+    box({ right: 40, top: 80, width: 22, height: 120, background: RED }),
+  ],
+  // Книга «Для голоса»: одна тонкая красная диагональ.
+  Операции: [box({ right: -40, top: 20, width: 420, height: 3, background: RED, transform: 'rotate(-32deg)', transformOrigin: 'right' })],
+  // Один маленький наклонённый красный квадрат.
+  Дочка: [box({ right: 70, top: 20, width: 120, height: 120, background: RED, transform: 'rotate(-14deg)' })],
+  // Одна чёрная планка, как линейка на листе.
+  Настройки: [box({ right: 60, top: -20, width: 20, height: 300, background: INK, transform: 'rotate(12deg)' })],
 }
 
 export function Background({ tab }: { tab: string }) {
-  const [base, dark, light] = THEMES[tab] ?? THEMES['Месяц']
-  const seed = tab.length * 11
   return (
-    <div className="bg" style={{ backgroundColor: base }} aria-hidden>
-      <svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" viewBox="0 0 1000 1000">
-        <defs>
-          <filter id="bg-s" x="-10%" y="-10%" width="120%" height="120%">
-            <feTurbulence type="fractalNoise" baseFrequency="0.0018 0.11" numOctaves={5} seed={seed} />
-            <feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .9 -.32" />
-            <feGaussianBlur stdDeviation="1.6 2.6" />
-          </filter>
-          <filter id="bg-soft" x="-300%" y="-20%" width="700%" height="140%">
-            <feGaussianBlur stdDeviation="22" />
-          </filter>
-          <filter id="bg-grain">
-            <feTurbulence type="fractalNoise" baseFrequency="1.4" numOctaves={2} seed={3} />
-            <feColorMatrix type="saturate" values="0" />
-            <feComponentTransfer>
-              <feFuncA type="linear" slope=".05" />
-            </feComponentTransfer>
-          </filter>
-          <linearGradient id="bg-d" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor={dark} />
-            <stop offset=".5" stopColor={base} />
-            <stop offset="1" stopColor={dark} />
-          </linearGradient>
-        </defs>
-        <rect width="1000" height="1000" fill="url(#bg-d)" />
-        <g transform="rotate(-7 500 500)" opacity=".42">
-          <rect x="-200" y="-150" width="1400" height="1300" fill={light} filter="url(#bg-s)" />
-        </g>
-        <ellipse cx="660" cy="500" rx="70" ry="620" fill={light} opacity=".32" filter="url(#bg-soft)" />
-        <ellipse cx="140" cy="520" rx="22" ry="640" fill={light} opacity=".2" filter="url(#bg-soft)" />
-        <rect width="1000" height="1000" filter="url(#bg-grain)" />
-      </svg>
-    </div>
+    <>
+      {(SHAPES[tab] ?? SHAPES['Месяц']).map((s, i) => (
+        <div key={tab + i} className="deco" style={s} aria-hidden />
+      ))}
+    </>
   )
 }
