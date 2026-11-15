@@ -614,7 +614,7 @@ export default function App() {
       {tab === 'Покер' && (
         <div className="grid">
           <div className="card wide">
-            <h3>♠ Покер · без налога</h3>
+            <h3>Покер · без налога</h3>
             <table className="rows">
               <thead>
                 <tr>
