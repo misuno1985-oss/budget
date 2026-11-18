@@ -89,7 +89,7 @@ export interface Op {
   /** Если подписку платят частями — сколько злотых этой операцией засчитано. */
   subPart?: number
   /** Куда операция автоматически разнесена (налоги, взносы, расходы). existed — такая запись уже была. */
-  booked?: { kind: 'income' | 'taxpay' | 'expense'; colId?: string; itemId?: string; rowId?: string; amount?: number; existed?: boolean }
+  booked?: { kind: 'income' | 'taxpay' | 'expense' | 'saving'; colId?: string; itemId?: string; rowId?: string; amount?: number; existed?: boolean }
   /** Операция взята из выписки банка (уведомление не пришло). На остаток не влияет — он берётся из банка. */
   fromBank?: boolean
   /** Какой операции в выписке банка соответствует. */

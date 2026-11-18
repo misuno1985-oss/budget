@@ -659,3 +659,35 @@ describe('таблица в раскладке старого листа', () =>
     expect((body.sheets[0].data[0].rowData[0].values[5] as any).userEnteredValue.numberValue).toBe(46305)
   })
 })
+
+describe('переводы в сбережения Revolut', () => {
+  const feedOf = (tx: any[]) => ({
+    fetchedAt: '2026-11-20T16:00:00Z',
+    sessions: {},
+    errors: [],
+    accounts: [{ uid: 'u2', bank: 'revolut' as any, role: 'revolut', cur: 'PLN', last4: '0000', available: 100, booked: null, at: '2026-11-20T16:00:00Z', tx }],
+  })
+  const t = (id: string, amount: number, dir: 1 | -1, text: string) => ({ id, date: '2026-11-20', amount, cur: 'PLN', dir, pending: false, text })
+  const withSaving = () => {
+    const s = sample()
+    s.bankLinks = { pko: 'a', revolut: 'b' }
+    s.bankSync = { since: '2026-11-01', start: '2026-11-01', fetchedAt: '' }
+    s.assets = [{ id: 'sv', name: 'Oszczędności', amt: { v: 1000, cur: 'PLN' } }]
+    return s
+  }
+
+  it('«To Oszczędności» прибавляет, «From Oszczędności» вычитает', async () => {
+    const { reconcile } = await import('./bank')
+    const s = reconcile(withSaving(), feedOf([t('a1', 250, -1, 'To Oszczędności'), t('a2', 40, 1, 'From Oszczędności')]), rates)
+    expect(s.assets[0].amt.v).toBe(1210)
+  })
+
+  it('отмена операции возвращает сумму обратно', async () => {
+    const { reconcile } = await import('./bank')
+    const { undoOp } = await import('./state')
+    const s = reconcile(withSaving(), feedOf([t('a3', 300, -1, 'To Oszczędności')]), rates)
+    expect(s.assets[0].amt.v).toBe(1300)
+    undoOp(s, s.ops.find(o => o.bankTx === 'a3')!, rates)
+    expect(s.assets[0].amt.v).toBe(1000)
+  })
+})

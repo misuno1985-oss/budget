@@ -11,6 +11,10 @@ type Rule =
   | { kind: 'skip'; re: RegExp }
   | { kind: 'taxpay'; re: RegExp }
   | { kind: 'expense'; re: RegExp; row: RegExp; rent?: 'chynsh' | 'electr' }
+  | { kind: 'saving'; re: RegExp; dir: 1 | -1 }
+
+/** Строка капитала, куда идут переводы в «Oszczędności» Revolut (чистые деньги, без процентов). */
+const SAVING_ROW = /oszcz[ęe]dno[śs]ci|сбережения revolut/i
 
 const isBrand = (key: string) => (name: string) => brandsOf(name).some(b => b.key === key)
 
@@ -20,6 +24,9 @@ const BUILTIN: Rule[] = [
   { kind: 'income', re: /citibank europe|stripe|buy\s*me\s*a\s*coffee/i, column: isBrand('bmc') },
   { kind: 'taxpay', re: /urz[ąa]d skarbow|org\.?\s*podatkow|mikrorachun/i },
   { kind: 'expense', re: /wsp[óo]lnota mieszkaniowa/i, row: /чынш|czynsz|wsp[óo]lnot/i, rent: 'chynsh' },
+  // Revolut: «To Oszczędności» — отложил в сбережения, «From Oszczędności» — забрал обратно.
+  { kind: 'saving', re: /\b(to|do)\s+oszcz[ęe]dno[śs]ci/i, dir: -1 },
+  { kind: 'saving', re: /\b(from|z)\s+oszcz[ęe]dno[śs]ci/i, dir: 1 },
 ]
 
 const safeRe = (src: string) => {
@@ -44,7 +51,7 @@ function rulesOf(s: State): Rule[] {
 
 export function ruleOf(s: State, op: Op): Rule | undefined {
   const text = op.manual ? op.note || '' : op.text
-  const r = rulesOf(s).find(r => r.re.test(text) && (r.kind === 'income' || r.kind === 'skip' ? op.dir > 0 : op.dir < 0))
+  const r = rulesOf(s).find(r => r.re.test(text) && (r.kind === 'saving' ? op.dir === r.dir : r.kind === 'income' || r.kind === 'skip' ? op.dir > 0 : op.dir < 0))
   return r?.kind === 'skip' ? undefined : r
 }
 
@@ -90,6 +97,13 @@ export function book(s: State, op: Op) {
     const id = uid()
     s.tax.payments.push({ id, date, amount, auto: op.id })
     op.booked = { kind: 'taxpay', itemId: id }
+  } else if (r.kind === 'saving') {
+    // Перевод в сбережения прибавляет к строке капитала, обратный — вычитает. Проценты сюда не попадают.
+    const row = s.assets.find(x => SAVING_ROW.test(x.name) && x.amt.cur === 'PLN' && op.cur === 'PLN')
+    if (!row) return
+    const delta = round2(-op.dir * amount)
+    row.amt = { ...row.amt, v: round2(row.amt.v + delta) }
+    op.booked = { kind: 'saving', rowId: row.id, amount: delta }
   } else if (r.kind === 'expense') {
     const row = s.expenses.find(x => r.row.test(x.name))
     if (row) row.amt = { ...row.amt, v: round2(row.amt.v + amount) }
@@ -113,6 +127,9 @@ export function unbook(s: State, op: Op) {
     if (col) col.items = col.items.filter(x => x.id !== b.itemId)
   } else if (b.kind === 'taxpay') {
     s.tax.payments = s.tax.payments.filter(x => x.id !== b.itemId)
+  } else if (b.kind === 'saving') {
+    const row = s.assets.find(x => x.id === b.rowId)
+    if (row && b.amount) row.amt = { ...row.amt, v: round2(row.amt.v - b.amount) }
   } else {
     const row = s.expenses.find(x => x.id === b.rowId)
     if (row && b.amount) row.amt = { ...row.amt, v: round2(Math.max(0, row.amt.v - b.amount)) }
@@ -129,6 +146,10 @@ export function bookedLabel(s: State, op: Op): string | null {
     return `${b.existed ? 'Уже было в налогах' : '→ Налоги'}: ${col?.name ?? ''}`
   }
   if (b.kind === 'taxpay') return b.existed ? 'Уже было во взносах в Urząd Skarbowy' : '→ Взнос в Urząd Skarbowy'
+  if (b.kind === 'saving') {
+    const row = s.assets.find(x => x.id === b.rowId)
+    return `→ Капитал: ${row?.name ?? 'Oszczędności'} ${(b.amount ?? 0) > 0 ? '+' : '−'}${Math.abs(b.amount ?? 0).toFixed(2).replace('.', ',')}`
+  }
   const row = s.expenses.find(x => x.id === b.rowId)
   return `→ Расходы: ${row?.name ?? '—'}${b.itemId ? ' и история квартиры' : ''}`
 }
