@@ -89,6 +89,13 @@ table.rows { width: 100%; border-collapse: collapse; }
 .r { text-align: right !important; white-space: nowrap; }
 .nowrap { white-space: nowrap; }
 td.del { width: 26px; }
+td.grip { width: 18px; padding: 0 !important; }
+td.grip span { display: inline-block; width: 18px; text-align: center; color: var(--muted); font-size: 16px; cursor: grab; opacity: 0.3; user-select: none; }
+.rows tr:hover td.grip span, .rows.dragging td.grip span { opacity: 1; }
+td.grip span:active { cursor: grabbing; }
+.rows tr.moving { opacity: 0.35; }
+.rows tr.dropbefore td { box-shadow: inset 0 3px 0 var(--red); }
+.rows tr.dropafter td { box-shadow: inset 0 -3px 0 var(--red); }
 .x { border: none; background: none; color: var(--muted); font-size: 18px; cursor: pointer; padding: 0 4px; line-height: 1; }
 .x:hover { color: var(--red); }
 button.add { font-family: var(--head); text-transform: uppercase; letter-spacing: 0.05em; font-size: 13px; border: 2px solid var(--ink); background: var(--paper); color: var(--ink); border-radius: 0; padding: 4px 12px; margin-top: 8px; cursor: pointer; white-space: nowrap; }

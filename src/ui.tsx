@@ -178,12 +178,26 @@ export function Rows({
   extra?: (r: Row) => React.ReactNode
 }) {
   const set = (i: number, patch: Partial<Row>) => onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
+  // Перетаскивание строк за ручку ⠿: откуда тянем и куда встанет (индекс «перед какой строкой»).
+  const [from, setFrom] = useState<number | null>(null)
+  const [to, setTo] = useState<number | null>(null)
+  const drop = () => {
+    if (from !== null && to !== null && to !== from && to !== from + 1) {
+      const next = [...rows]
+      const [moved] = next.splice(from, 1)
+      next.splice(to > from ? to - 1 : to, 0, moved)
+      onChange(next)
+    }
+    setFrom(null)
+    setTo(null)
+  }
   return (
     <>
-      <table className="rows">
+      <table className={'rows' + (from !== null ? ' dragging' : '')}>
         {withPlan && rows.length > 0 && (
           <thead>
             <tr>
+              <th />
               <th />
               <th className="r">план</th>
               <th className="r">факт</th>
@@ -193,7 +207,39 @@ export function Rows({
         )}
         <tbody>
           {rows.map((r, i) => (
-            <tr key={r.id}>
+            <tr
+              key={r.id}
+              className={(from === i ? 'moving' : '') + (to === i ? ' dropbefore' : '') + (to === rows.length && i === rows.length - 1 ? ' dropafter' : '')}
+              onDragOver={e => {
+                if (from === null) return
+                e.preventDefault()
+                const box = e.currentTarget.getBoundingClientRect()
+                setTo(e.clientY < box.top + box.height / 2 ? i : i + 1)
+              }}
+              onDrop={e => {
+                e.preventDefault()
+                drop()
+              }}
+            >
+              <td className="grip">
+                <span
+                  draggable
+                  title="Перетащите, чтобы поменять порядок"
+                  onDragStart={e => {
+                    e.dataTransfer.effectAllowed = 'move'
+                    e.dataTransfer.setData('text/plain', r.name)
+                    const tr = e.currentTarget.closest('tr')
+                    if (tr) e.dataTransfer.setDragImage(tr, 12, 16)
+                    setFrom(i)
+                  }}
+                  onDragEnd={() => {
+                    setFrom(null)
+                    setTo(null)
+                  }}
+                >
+                  ⠿
+                </span>
+              </td>
               <td>
                 <div className="nmcell">
                   <Logos name={r.name} />
