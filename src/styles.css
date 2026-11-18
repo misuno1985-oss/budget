@@ -32,6 +32,8 @@ nav { display: flex; flex-direction: column; }
 .tab { border: none; background: none; color: var(--paper); text-align: left; padding: 11px 22px; font: inherit; text-transform: inherit; letter-spacing: inherit; font-size: 16px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
 .tab:hover { background: #2a2a2a; }
 .tab.on { background: var(--red); color: #fff; }
+.tab.foot { margin-top: 18px; font-family: 'Onest', sans-serif; text-transform: none; letter-spacing: 0; font-size: 13px; padding: 6px 22px; color: #b9b2a2; }
+.tab.foot.on { color: #fff; }
 .badge { background: var(--paper); color: var(--red2); font-size: 11px; padding: 0 6px; font-family: 'Onest', sans-serif; letter-spacing: 0; }
 .tab.on .badge { background: #fff; }
 .main { flex: 1; min-width: 0; position: relative; overflow: hidden; padding: 22px 30px 44px; max-width: 1240px; }

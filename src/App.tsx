@@ -14,7 +14,8 @@ import { createSpreadsheet, googleToken } from './gsheet'
 import { fmt, Logos, MoneyInput, Num, Rows, Txt } from './ui'
 
 const LKEY = 'budget.state'
-const TABS = ['Месяц', 'Капитал', 'Налоги', 'Покер', 'Квартира', 'Операции', 'Дочка', 'Настройки'] as const
+// Порядок меню; «Покер» — отдельной сноской под «Настройками».
+const TABS = ['Месяц', 'Капитал', 'Налоги', 'Квартира', 'Дочка', 'Операции', 'Настройки', 'Покер'] as const
 type Tab = (typeof TABS)[number]
 const BANK_NAME: Record<Bank, string> = { pko: 'PKO', revolut: 'Revolut' }
 
@@ -289,8 +290,8 @@ export default function App() {
         </div>
         <nav>
           {TABS.map(x => (
-            <button key={x} className={x === tab ? 'tab on' : 'tab'} onClick={() => setTab(x)}>
-              {x}
+            <button key={x} className={(x === 'Покер' ? 'tab foot' : 'tab') + (x === tab ? ' on' : '')} onClick={() => setTab(x)}>
+              {x === 'Покер' ? '*Poker' : x}
               {x === 'Операции' && unknown > 0 && <span className="badge">{unknown}</span>}
             </button>
           ))}
