@@ -29,7 +29,8 @@ export function statementRows(s: State, bank: StatementBank, from: string, to: s
     .filter(o => bank === 'all' || o.bank === bank)
     .map(o => ({ o, date: localDate(o.at) }))
     .filter(x => x.date >= from && x.date <= to)
-    .sort((a, b) => a.date.localeCompare(b.date) || a.o.at.localeCompare(b.o.at))
+    // Новые сверху, старые внизу.
+    .sort((a, b) => b.date.localeCompare(a.date) || b.o.at.localeCompare(a.o.at) || b.o.id - a.o.id)
     .map(({ o, date }) => ({
       date,
       bank: o.bank,

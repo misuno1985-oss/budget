@@ -710,8 +710,8 @@ describe('выписка операций', () => {
   it('только учтённые операции за период, по банку', async () => {
     const { statementRows, statementTotals } = await import('./statement')
     const all = statementRows(st(), 'all', '2026-11-01', '2026-11-30')
-    expect(all.map(r => r.out || r.inc)).toEqual([10, 100, 30])
-    expect(all[2]).toMatchObject({ source: 'вручную', text: 'наличные' })
+    expect(all.map(r => r.out || r.inc)).toEqual([30, 100, 10])
+    expect(all[0]).toMatchObject({ source: 'вручную', text: 'наличные' })
     expect(statementRows(st(), 'pko', '2026-11-01', '2026-11-30').map(r => r.out)).toEqual([10])
     expect(statementTotals(all).PLN).toEqual({ inc: 100, out: 40, diff: 60, count: 3 })
   })
