@@ -11,7 +11,7 @@ import type { Bank, BankFeed, Op, Rates, State, TaxItem } from './types'
 import { CUR_SIGN } from './types'
 import { buildGrid, sheetBody } from './sheet'
 import { createSpreadsheet, googleToken } from './gsheet'
-import { statementHtml, type StatementBank } from './statement'
+import { type StatementBank } from './statement'
 import { fmt, Logos, MoneyInput, Num, Rows, Txt } from './ui'
 
 const LKEY = 'budget.state'
@@ -1292,14 +1292,20 @@ function StatementBox({ state, today }: { state: State; today: Date }) {
   const [from, setFrom] = useState(() => iso(cycleStart(state, today)))
   const [to, setTo] = useState(() => iso(today))
   const [err, setErr] = useState('')
-  const make = () => {
+  const [busy, setBusy] = useState(false)
+  const make = async () => {
     if (!from || !to || from > to) return setErr('Проверьте даты: «с» не позже «по».')
     setErr('')
-    const w = window.open('', '_blank')
-    if (!w) return setErr('Браузер не дал открыть окно — разрешите всплывающие окна для этой страницы.')
-    w.document.open()
-    w.document.write(statementHtml(state, bank, from, to))
-    w.document.close()
+    setBusy(true)
+    try {
+      // Файл PDF сразу в «Загрузки».
+      const { downloadStatementPdf } = await import('./pdf')
+      await downloadStatementPdf(state, bank, from, to)
+    } catch (e: any) {
+      setErr('Не получилось собрать PDF: ' + (e?.message || 'ошибка'))
+    } finally {
+      setBusy(false)
+    }
   }
   return (
     <div className="manual statement">
@@ -1323,8 +1329,8 @@ function StatementBox({ state, today }: { state: State; today: Date }) {
       <span className="nowrap">
         по <input type="date" value={to} onChange={e => setTo(e.target.value)} />
       </span>
-      <button className="add" onClick={make}>
-        ⤓ Сформировать PDF
+      <button className="add" onClick={make} disabled={busy}>
+        {busy ? <span className="spin">⟳</span> : '⤓'} {busy ? 'Собираю PDF…' : 'Сформировать PDF'}
       </button>
       {err && <span className="warn small">{err}</span>}
     </div>
