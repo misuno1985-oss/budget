@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { capital, dm, itemPln, month, nextDue, parseDate, prepaidLeft, subOrder, subPln, tax } from './calc'
+import { capital, cycleStart, dm, itemPln, month, nextDue, parseDate, prepaidLeft, subOrder, subPln, tax } from './calc'
 import { loadBank, loadData, triggerBank, loadSettings, saveData, saveSettings, type Settings } from './github'
 import { cachedRates, fetchRates, nbpRateBefore, type RatesInfo } from './rates'
 import { bookedLabel } from './autobook'
@@ -11,6 +11,7 @@ import type { Bank, BankFeed, Op, Rates, State, TaxItem } from './types'
 import { CUR_SIGN } from './types'
 import { buildGrid, sheetBody } from './sheet'
 import { createSpreadsheet, googleToken } from './gsheet'
+import { statementHtml, type StatementBank } from './statement'
 import { fmt, Logos, MoneyInput, Num, Rows, Txt } from './ui'
 
 const LKEY = 'budget.state'
@@ -323,7 +324,7 @@ export default function App() {
       <section className="kpi">
         <div className="tile hero">
           <p>Можно в день</p>
-          <b className={m.perDay === null ? '' : m.perDay < 0 ? 'neg' : ''}>{m.perDay === null ? 'выберите дату' : `${fmt(m.perDay)} zł`}</b>
+          <b className={m.perDay === null ? '' : m.perDay < 0 ? 'neg' : ''}>{m.perDay === null ? '—' : `${fmt(m.perDay)} zł`}</b>
         </div>
         <div className="tile">
           <p>Остаток месяца</p>
@@ -747,6 +748,7 @@ export default function App() {
             ),
           )}
           <BankLine feed={feed} refreshing={refreshing} onRefresh={() => refreshBank()} canRefresh={!!settings.token} />
+          <StatementBox state={state} today={today} />
           <ManualForm state={state} upd={upd} rates={R} />
           {state.ops.length === 0 && <p className="muted">Пока ничего не пришло.</p>}
           <table className="rows ops">
@@ -1279,6 +1281,52 @@ function SheetButton({ state, rates, today, settings, openSettings }: { state: S
         </span>
       )}
       {err && <span className="warn small"> {err}</span>}
+    </div>
+  )
+}
+
+/** «Выписка»: PDF с операциями из программы за период — PKO, Revolut или оба (страница печати → «Сохранить как PDF»). */
+function StatementBox({ state, today }: { state: State; today: Date }) {
+  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const [bank, setBank] = useState<StatementBank>('all')
+  const [from, setFrom] = useState(() => iso(cycleStart(state, today)))
+  const [to, setTo] = useState(() => iso(today))
+  const [err, setErr] = useState('')
+  const make = () => {
+    if (!from || !to || from > to) return setErr('Проверьте даты: «с» не позже «по».')
+    setErr('')
+    const w = window.open('', '_blank')
+    if (!w) return setErr('Браузер не дал открыть окно — разрешите всплывающие окна для этой страницы.')
+    w.document.open()
+    w.document.write(statementHtml(state, bank, from, to))
+    w.document.close()
+  }
+  return (
+    <div className="manual statement">
+      <b>Выписка</b>
+      <span className="seg">
+        {(
+          [
+            ['all', 'PKO + Revolut'],
+            ['pko', 'PKO'],
+            ['revolut', 'Revolut'],
+          ] as [StatementBank, string][]
+        ).map(([k, label]) => (
+          <button key={k} className={bank === k ? 'on' : ''} onClick={() => setBank(k)}>
+            {label}
+          </button>
+        ))}
+      </span>
+      <span className="nowrap">
+        с <input type="date" value={from} min="2026-11-04" onChange={e => setFrom(e.target.value)} />
+      </span>
+      <span className="nowrap">
+        по <input type="date" value={to} onChange={e => setTo(e.target.value)} />
+      </span>
+      <button className="add" onClick={make}>
+        ⤓ Сформировать PDF
+      </button>
+      {err && <span className="warn small">{err}</span>}
     </div>
   )
 }

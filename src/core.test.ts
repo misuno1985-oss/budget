@@ -691,3 +691,34 @@ describe('переводы в сбережения Revolut', () => {
     expect(s.assets[0].amt.v).toBe(1000)
   })
 })
+
+describe('выписка операций', () => {
+  const op = (id: number, at: string, bank: 'pko' | 'revolut', dir: 1 | -1, amount: number, status: any = 'applied', extra: any = {}) =>
+    ({ id, at, bank, text: 'Sklep ' + id, amount, cur: 'PLN', dir, status, fromBank: true, ...extra }) as any
+  const st = () => {
+    const s = sample()
+    s.ops = [
+      op(1, '2026-11-05T12:00:00', 'pko', -1, 10),
+      op(2, '2026-11-06T12:00:00', 'revolut', 1, 100),
+      op(3, '2026-11-07T12:00:00', 'pko', -1, 20, 'matched'),
+      op(4, '2026-11-08T12:00:00', 'pko', -1, 5, 'unknown'),
+      op(5, '2026-11-09T12:00:00', 'revolut', -1, 30, 'applied', { fromBank: false, manual: true, note: 'наличные' }),
+      op(6, '2026-12-01T12:00:00', 'pko', -1, 99),
+    ]
+    return s
+  }
+  it('только учтённые операции за период, по банку', async () => {
+    const { statementRows, statementTotals } = await import('./statement')
+    const all = statementRows(st(), 'all', '2026-11-01', '2026-11-30')
+    expect(all.map(r => r.out || r.inc)).toEqual([10, 100, 30])
+    expect(all[2]).toMatchObject({ source: 'вручную', text: 'наличные' })
+    expect(statementRows(st(), 'pko', '2026-11-01', '2026-11-30').map(r => r.out)).toEqual([10])
+    expect(statementTotals(all).PLN).toEqual({ inc: 100, out: 40, diff: 60, count: 3 })
+  })
+  it('страница для PDF с названием и итогами', async () => {
+    const { statementHtml } = await import('./statement')
+    const html = statementHtml(st(), 'all', '2026-11-01', '2026-11-30')
+    expect(html).toContain('<title>Выписка PKO и Revolut 01.11–30.11.2026</title>')
+    expect(html).toContain('+60,00 zł')
+  })
+})

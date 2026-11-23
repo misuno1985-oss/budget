@@ -110,7 +110,7 @@ const CODES: [RegExp, string][] = [
   [/TRANSFER-OUT/i, 'перевод'],
   [/CARD-PAYMENT/i, ''],
 ]
-const CITY = /^(warszawa|krakow|kraków|gdansk|gdańsk|wroclaw|wrocław|poznan|poznań|lodz|łódź|vilnius|london|dublin|berlin|amsterdam)(?=[A-ZĄĆĘŁŃÓŚŹŻ])/i
+const CITY = /^(warszawa|warsaw|krakow|kraków|gdansk|gdańsk|wroclaw|wrocław|poznan|poznań|lodz|łódź|vilnius|london|dublin|berlin|amsterdam)(?=[A-ZĄĆĘŁŃÓŚŹŻ])/i
 
 /** Читаемое описание операции из выписки: без служебных кодов банка, длинных номеров и склеенного города. */
 export function txLabel(text: string): string {
