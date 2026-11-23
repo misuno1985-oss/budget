@@ -19,6 +19,7 @@ const LIST: [RegExp, Brand][] = [
   [/claude|клод/i, { key: 'claude', src: B + 'claude.svg' }],
   [/revolut|револют/i, { key: 'revolut', src: B + 'revolut.svg' }],
   [/hetzner/i, { key: 'hetzner', src: B + 'hetzner.svg' }],
+  [/notatki/i, { key: 'notatki', src: B + 'notatki.svg' }],
   [/librus|либрус/i, { key: 'librus', src: B + 'librus.svg' }],
   [/\bpko\b|пко/i, { key: 'pko', src: B + 'pko.png' }],
   [/цвет|flowers|stem\s*by\s*stem|kwiat/i, { key: 'flowers', src: B + 'stembystem.png' }],
